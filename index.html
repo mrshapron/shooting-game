@@ -261,7 +261,7 @@ function startMusic(type) {
     musicGain = audioCtx.createGain();
     musicGain.connect(audioCtx.destination);
   }
-  musicGain.gain.setValueAtTime(0.07, audioCtx.currentTime);
+  musicGain.gain.setValueAtTime(0.35, audioCtx.currentTime);
 
   musicStep = 0;
 
@@ -276,7 +276,7 @@ function startMusic(type) {
       osc.frequency.value = freq;
       filter.type = 'lowpass';
       filter.frequency.value = 400;
-      g.gain.value = 0.3;
+      g.gain.value = 0.5;
       osc.connect(filter);
       filter.connect(g);
       g.connect(musicGain);
@@ -292,7 +292,7 @@ function startMusic(type) {
       const g = audioCtx.createGain();
       osc.type = 'triangle';
       osc.frequency.value = note;
-      g.gain.setValueAtTime(0.12, audioCtx.currentTime);
+      g.gain.setValueAtTime(0.25, audioCtx.currentTime);
       g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
       osc.connect(g);
       g.connect(musicGain);
@@ -313,7 +313,7 @@ function startMusic(type) {
       f.type = 'highpass';
       f.frequency.value = 8000;
       const g = audioCtx.createGain();
-      g.gain.setValueAtTime(0.04, audioCtx.currentTime);
+      g.gain.setValueAtTime(0.12, audioCtx.currentTime);
       g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.06);
       src.connect(f);
       f.connect(g);
@@ -333,7 +333,7 @@ function startMusic(type) {
       const f = audioCtx.createBiquadFilter();
       f.type = 'lowpass';
       f.frequency.value = 300;
-      g.gain.setValueAtTime(0.25, audioCtx.currentTime);
+      g.gain.setValueAtTime(0.5, audioCtx.currentTime);
       g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.18);
       osc.connect(f);
       f.connect(g);
@@ -351,7 +351,7 @@ function startMusic(type) {
         kick.type = 'sine';
         kick.frequency.setValueAtTime(150, audioCtx.currentTime);
         kick.frequency.exponentialRampToValueAtTime(30, audioCtx.currentTime + 0.12);
-        kg.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        kg.gain.setValueAtTime(0.6, audioCtx.currentTime);
         kg.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
         kick.connect(kg);
         kg.connect(musicGain);
@@ -367,7 +367,7 @@ function startMusic(type) {
         sf.type = 'bandpass';
         sf.frequency.value = 3000;
         const sg = audioCtx.createGain();
-        sg.gain.setValueAtTime(0.08, audioCtx.currentTime);
+        sg.gain.setValueAtTime(0.2, audioCtx.currentTime);
         sg.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
         src.connect(sf);
         sf.connect(sg);
@@ -395,7 +395,7 @@ function startMusic(type) {
       osc.frequency.value = note;
       f.type = 'lowpass';
       f.frequency.value = 250;
-      g.gain.setValueAtTime(0.2, audioCtx.currentTime);
+      g.gain.setValueAtTime(0.5, audioCtx.currentTime);
       g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
       osc.connect(f);
       f.connect(g);
@@ -412,7 +412,7 @@ function startMusic(type) {
         hf.frequency.value = 9000;
         const hg = audioCtx.createGain();
         const t = audioCtx.currentTime + h * 0.055;
-        hg.gain.setValueAtTime(0.03, t);
+        hg.gain.setValueAtTime(0.1, t);
         hg.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
         src.connect(hf);
         hf.connect(hg);
@@ -428,7 +428,7 @@ function startMusic(type) {
         kick.type = 'sine';
         kick.frequency.setValueAtTime(180, audioCtx.currentTime);
         kick.frequency.exponentialRampToValueAtTime(25, audioCtx.currentTime + 0.15);
-        kg.gain.setValueAtTime(0.35, audioCtx.currentTime);
+        kg.gain.setValueAtTime(0.7, audioCtx.currentTime);
         kg.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.18);
         kick.connect(kg);
         kg.connect(musicGain);
@@ -447,7 +447,7 @@ function updateMusic() {
     if (musicGain) musicGain.gain.setValueAtTime(0, audioCtx.currentTime);
     return;
   }
-  if (musicGain) musicGain.gain.setValueAtTime(0.07, audioCtx.currentTime);
+  if (musicGain) musicGain.gain.setValueAtTime(0.35, audioCtx.currentTime);
 
   let targetMusic = '';
   if (state === 'menu' || state === 'online-menu' || state === 'online-host' || state === 'online-join') {
