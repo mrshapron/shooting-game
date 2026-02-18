@@ -30,6 +30,7 @@
 </head>
 <body>
   <canvas id="game"></canvas>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <script>
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -234,6 +235,19 @@ const SFX = {
   },
 };
 
+// Wrap SFX for online sync
+(function() {
+  for (let name in SFX) {
+    let original = SFX[name];
+    SFX[name] = function() {
+      original.call(this);
+      if (onlineMode && isHost) {
+        sfxBuffer.push(name);
+      }
+    };
+  }
+})();
+
 // ─── GAME STATE ───
 let state = 'menu'; // menu, playing, dead, levelComplete, levelIntro
 let score = 0;
@@ -254,6 +268,24 @@ let levelIntroTimer = 0;
 let coopMode = false;
 let player2 = null;
 let menuSelection = 0;
+
+// ─── ONLINE MULTIPLAYER ───
+let onlineMode = false;
+let isHost = false;
+let isClient = false;
+let peer = null;
+let conn = null;
+let roomCode = '';
+let roomCodeInput = '';
+let connectionStatus = '';
+let disconnected = false;
+let disconnectTimer = 0;
+let sfxBuffer = [];
+let floatingTextBuffer = [];
+let onlineMenuSelection = 0;
+let clientInputState = { keys: { left: false, right: false, shoot: false, shield: false }, events: [] };
+let stateSyncInterval = null;
+let inputSendInterval = null;
 
 // ─── LEVEL DEFINITIONS ───
 const levels = [
@@ -453,12 +485,96 @@ document.addEventListener('keydown', e => {
   initAudio();
   if (e.key.toLowerCase() === 'm') { muted = !muted; return; }
 
-  if (state === 'menu') {
-    if (e.key === 'ArrowUp' || e.key.toLowerCase() === 'w') { menuSelection = 0; SFX.menuSelect(); return; }
-    if (e.key === 'ArrowDown' || e.key.toLowerCase() === 's') { menuSelection = 1; SFX.menuSelect(); return; }
-    if (e.key === 'Enter' || e.key === ' ') { coopMode = menuSelection === 1; startGame(); return; }
+  // Client input: queue events and return early
+  if (onlineMode && isClient && state === 'playing') {
+    let k = e.key.toLowerCase();
+    if (k === 'w' || k === ' ' || e.key === 'ArrowUp') {
+      clientInputState.events.push('jump');
+    }
+    if (k === 'q' || e.key === 'Shift') {
+      clientInputState.events.push('dash');
+    }
+    if (k === 'r') {
+      clientInputState.events.push('reload');
+    }
     return;
   }
+
+  if (state === 'menu') {
+    if (e.key === 'ArrowUp' || e.key.toLowerCase() === 'w') {
+      menuSelection = (menuSelection - 1 + 3) % 3;
+      SFX.menuSelect();
+      return;
+    }
+    if (e.key === 'ArrowDown' || e.key.toLowerCase() === 's') {
+      menuSelection = (menuSelection + 1) % 3;
+      SFX.menuSelect();
+      return;
+    }
+    if (e.key === 'Enter' || e.key === ' ') {
+      if (menuSelection === 0) { coopMode = false; startGame(); }
+      else if (menuSelection === 1) { coopMode = true; startGame(); }
+      else if (menuSelection === 2) { state = 'online-menu'; onlineMenuSelection = 0; SFX.menuSelect(); }
+      return;
+    }
+    return;
+  }
+
+  if (state === 'online-menu') {
+    if (e.key === 'ArrowUp' || e.key.toLowerCase() === 'w') { onlineMenuSelection = 0; SFX.menuSelect(); return; }
+    if (e.key === 'ArrowDown' || e.key.toLowerCase() === 's') { onlineMenuSelection = 1; SFX.menuSelect(); return; }
+    if (e.key === 'Enter' || e.key === ' ') {
+      SFX.menuSelect();
+      if (onlineMenuSelection === 0) {
+        state = 'online-host';
+        startHosting();
+      } else {
+        state = 'online-join';
+        roomCodeInput = '';
+        connectionStatus = '';
+      }
+      return;
+    }
+    if (e.key === 'Escape') { state = 'menu'; return; }
+    return;
+  }
+
+  if (state === 'online-host') {
+    if (e.key === 'Escape') {
+      cleanupOnline();
+      state = 'menu';
+      return;
+    }
+    return;
+  }
+
+  if (state === 'online-join') {
+    if (e.key === 'Escape') {
+      cleanupOnline();
+      state = 'menu';
+      return;
+    }
+    if (e.key === 'Backspace') {
+      roomCodeInput = roomCodeInput.slice(0, -1);
+      connectionStatus = '';
+      return;
+    }
+    if (e.key === 'Enter' && roomCodeInput.length === 4) {
+      joinRoom(roomCodeInput);
+      return;
+    }
+    if (/^[a-zA-Z]$/.test(e.key) && roomCodeInput.length < 4) {
+      roomCodeInput += e.key.toUpperCase();
+      return;
+    }
+    return;
+  }
+
+  // Client cannot trigger restarts
+  if (onlineMode && isClient) {
+    if (state === 'dead' || state === 'won' || state === 'levelComplete') return;
+  }
+
   if (state === 'dead' && (e.key === 'Enter' || e.key === ' ')) { startGame(); return; }
   if (state === 'won' && (e.key === 'Enter' || e.key === ' ')) { startGame(); return; }
   if (state === 'levelComplete' && (e.key === 'Enter' || e.key === ' ')) {
@@ -477,8 +593,8 @@ document.addEventListener('keydown', e => {
       spawnJumpDust(player);
       if (player.jumps === 0) spawnDoubleJumpEffect(player);
     }
-    // P2 Jump
-    if (coopMode && e.key === 'ArrowUp' && player2 && player2.alive && player2.jumps > 0) {
+    // P2 Jump (local co-op only)
+    if (coopMode && !onlineMode && e.key === 'ArrowUp' && player2 && player2.alive && player2.jumps > 0) {
       if (player2.jumps === 1) SFX.doubleJump(); else SFX.jump();
       player2.vy = player2.jumps === 2 ? JUMP_FORCE : DOUBLE_JUMP_FORCE;
       player2.onGround = false;
@@ -490,8 +606,8 @@ document.addEventListener('keydown', e => {
     if ((e.key.toLowerCase() === 'q' || (!coopMode && e.key === 'Shift')) && player.alive && player.dashCooldown <= 0 && !player.dashing) {
       performDash(player);
     }
-    // P2 Dash
-    if (coopMode && e.key === "'" && player2 && player2.alive && player2.dashCooldown <= 0 && !player2.dashing) {
+    // P2 Dash (local co-op only)
+    if (coopMode && !onlineMode && e.key === "'" && player2 && player2.alive && player2.dashCooldown <= 0 && !player2.dashing) {
       performDash(player2);
     }
     // P1 Reload
@@ -499,8 +615,8 @@ document.addEventListener('keydown', e => {
       player.reloading = true;
       player.reloadTimer = 40;
     }
-    // P2 Reload
-    if (coopMode && e.key === ';' && player2 && player2.alive && !player2.reloading && player2.ammo < player2.maxAmmo) {
+    // P2 Reload (local co-op only)
+    if (coopMode && !onlineMode && e.key === ';' && player2 && player2.alive && !player2.reloading && player2.ammo < player2.maxAmmo) {
       player2.reloading = true;
       player2.reloadTimer = 40;
     }
@@ -756,6 +872,9 @@ function spawnCasing(x, y, dir) {
 
 function addFloatingText(text, x, y, color = '#fff', size = 16, life = 60) {
   floatingTexts.push({ text, x, y, color, size, life, maxLife: life });
+  if (onlineMode && isHost) {
+    floatingTextBuffer.push({ text, x, y, color, size, life });
+  }
 }
 
 // ─── SHOOTING ───
@@ -963,8 +1082,452 @@ function updatePlayerMovement(p, keysConfig, dt) {
   }
 }
 
+// ─── ONLINE MULTIPLAYER FUNCTIONS ───
+function generateRoomCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  let code = '';
+  for (let i = 0; i < 4; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return code;
+}
+
+const CLIENT_KEYS = {
+  left: ['a', 'arrowleft'],
+  right: ['d', 'arrowright'],
+  shoot: ['f'],
+  shield: ['e'],
+  reload: 'r',
+  dash: 'q',
+  jump: ['w', ' ', 'arrowup']
+};
+
+function isClientKeyPressed(action) {
+  let k = CLIENT_KEYS[action];
+  if (Array.isArray(k)) return k.some(key => keys[key]);
+  return !!keys[k];
+}
+
+function processRemoteEvent(p, event) {
+  if (!p || !p.alive) return;
+  if (event === 'jump' && p.jumps > 0) {
+    if (p.jumps === 1) SFX.doubleJump(); else SFX.jump();
+    p.vy = p.jumps === 2 ? JUMP_FORCE : DOUBLE_JUMP_FORCE;
+    p.onGround = false;
+    p.jumps--;
+    spawnJumpDust(p);
+    if (p.jumps === 0) spawnDoubleJumpEffect(p);
+  } else if (event === 'dash' && p.dashCooldown <= 0 && !p.dashing) {
+    performDash(p);
+  } else if (event === 'reload' && !p.reloading && p.ammo < p.maxAmmo) {
+    p.reloading = true;
+    p.reloadTimer = 40;
+  }
+}
+
+function startHosting() {
+  roomCode = generateRoomCode();
+  let peerId = 'gunslinger-' + roomCode;
+  connectionStatus = 'Creating room...';
+
+  peer = new Peer(peerId);
+  peer.on('open', () => {
+    connectionStatus = 'Waiting for player...';
+    isHost = true;
+    onlineMode = true;
+  });
+
+  peer.on('connection', (connection) => {
+    conn = connection;
+    setupHostConnection();
+  });
+
+  peer.on('error', (err) => {
+    if (err.type === 'unavailable-id') {
+      peer.destroy();
+      startHosting();
+    } else {
+      connectionStatus = 'Error: ' + err.type;
+    }
+  });
+}
+
+function joinRoom(code) {
+  connectionStatus = 'Connecting...';
+  peer = new Peer();
+
+  peer.on('open', () => {
+    conn = peer.connect('gunslinger-' + code);
+    conn.on('open', () => {
+      setupClientConnection();
+    });
+    conn.on('error', () => {
+      connectionStatus = 'Connection failed';
+    });
+  });
+
+  peer.on('error', (err) => {
+    if (err.type === 'peer-unavailable') {
+      connectionStatus = 'Room not found';
+    } else {
+      connectionStatus = 'Error: ' + err.type;
+    }
+  });
+}
+
+function setupHostConnection() {
+  connectionStatus = 'Connected!';
+  coopMode = true;
+  onlineMode = true;
+  isHost = true;
+  startGame();
+
+  conn.on('data', (data) => {
+    if (data.type === 'input') {
+      applyRemoteInput(data);
+    }
+  });
+
+  conn.on('close', () => handleDisconnect());
+  conn.on('error', () => handleDisconnect());
+
+  stateSyncInterval = setInterval(() => {
+    if (conn && conn.open) {
+      sendGameState();
+    }
+  }, 50);
+}
+
+function setupClientConnection() {
+  connectionStatus = 'Connected!';
+  onlineMode = true;
+  isClient = true;
+  coopMode = true;
+
+  state = 'levelIntro';
+  levelIntroTimer = 180;
+  player = createPlayer(canvas.width / 3);
+  player2 = createPlayer(canvas.width * 2 / 3, { body: '#27ae60', dash: '#f39c12', skin: '#f4d35e', hat: '#1a5c2e', hatBand: '#f39c12', shoe: '#f39c12' });
+  bullets = [];
+  enemies = [];
+  particles = [];
+  powerups = [];
+  floatingTexts = [];
+  casings = [];
+  score = 0;
+  level = 1;
+  wave = 0;
+  generatePlatforms();
+
+  conn.on('data', (data) => {
+    if (data.type === 'state') {
+      applyHostState(data);
+    }
+  });
+
+  conn.on('close', () => handleDisconnect());
+  conn.on('error', () => handleDisconnect());
+
+  inputSendInterval = setInterval(() => {
+    if (conn && conn.open) {
+      sendClientInput();
+    }
+  }, 50);
+}
+
+function cleanupOnline() {
+  if (stateSyncInterval) { clearInterval(stateSyncInterval); stateSyncInterval = null; }
+  if (inputSendInterval) { clearInterval(inputSendInterval); inputSendInterval = null; }
+  if (conn) { try { conn.close(); } catch(e) {} conn = null; }
+  if (peer) { try { peer.destroy(); } catch(e) {} peer = null; }
+  onlineMode = false;
+  isHost = false;
+  isClient = false;
+  disconnected = false;
+  disconnectTimer = 0;
+  coopMode = false;
+  roomCode = '';
+  roomCodeInput = '';
+  connectionStatus = '';
+  sfxBuffer = [];
+  floatingTextBuffer = [];
+  clientInputState = { keys: { left: false, right: false, shoot: false, shield: false }, events: [] };
+}
+
+function handleDisconnect() {
+  if (disconnected) return;
+  disconnected = true;
+  disconnectTimer = 180;
+  if (isHost) {
+    keys['arrowleft'] = false;
+    keys['arrowright'] = false;
+    keys['/'] = false;
+    keys['.'] = false;
+  }
+}
+
+function applyRemoteInput(data) {
+  if (!player2) return;
+  keys['arrowleft'] = data.keys.left;
+  keys['arrowright'] = data.keys.right;
+  keys['/'] = data.keys.shoot;
+  keys['.'] = data.keys.shield;
+
+  if (data.events) {
+    data.events.forEach(event => processRemoteEvent(player2, event));
+  }
+}
+
+function sendClientInput() {
+  if (!conn || !conn.open) return;
+  conn.send({
+    type: 'input',
+    keys: {
+      left: isClientKeyPressed('left'),
+      right: isClientKeyPressed('right'),
+      shoot: isClientKeyPressed('shoot'),
+      shield: isClientKeyPressed('shield'),
+    },
+    events: clientInputState.events.splice(0),
+  });
+}
+
+function serializePlayer(p) {
+  if (!p) return null;
+  return {
+    x: p.x, y: p.y, vx: p.vx, vy: p.vy,
+    facing: p.facing, onGround: p.onGround, jumps: p.jumps,
+    health: p.health, maxHealth: p.maxHealth,
+    dashing: p.dashing, dashTimer: p.dashTimer, dashCooldown: p.dashCooldown,
+    invincible: p.invincible,
+    ammo: p.ammo, maxAmmo: p.maxAmmo,
+    reloading: p.reloading, reloadTimer: p.reloadTimer,
+    weapon: p.weapon,
+    shielding: p.shielding,
+    shieldEnergy: p.shieldEnergy, maxShieldEnergy: p.maxShieldEnergy,
+    alive: p.alive,
+    shootCooldown: p.shootCooldown,
+    lastHitTimer: p.lastHitTimer,
+  };
+}
+
+function sendGameState() {
+  if (!conn || !conn.open) return;
+
+  conn.send({
+    type: 'state',
+    p1: serializePlayer(player),
+    p2: player2 ? serializePlayer(player2) : null,
+    enemies: enemies.map(e => ({
+      x: e.x, y: e.y, type: e.type, health: e.health, maxHealth: e.maxHealth,
+      facing: e.facing, alive: e.alive, dying: !!e.dying, deathTimer: e.deathTimer || 0,
+      deathVx: e.deathVx || 0, deathVy: e.deathVy || 0, deathRotation: e.deathRotation || 0,
+      deathRotSpeed: e.deathRotSpeed || 0, vy: e.vy, hit: e.hit,
+      speed: e.speed, boss: !!e.boss, bomber: !!e.bomber,
+    })),
+    bullets: bullets.map(b => ({
+      x: b.x, y: b.y, vx: b.vx, vy: b.vy, color: b.color, size: b.size,
+      isPlayer: b.isPlayer, life: b.life,
+    })),
+    powerups: powerups.map(p => ({
+      x: p.x, y: p.y, vy: p.vy, w: p.w, h: p.h, type: p.type, color: p.color, life: p.life,
+    })),
+    state: state,
+    score: score,
+    level: level,
+    wave: wave,
+    wavesPerLevel: wavesPerLevel,
+    killStreak: killStreak,
+    slowMo: slowMo,
+    slowMoTimer: slowMoTimer,
+    screenShake: screenShake,
+    levelIntroTimer: levelIntroTimer,
+    levelTransitionTimer: levelTransitionTimer,
+    sfx: sfxBuffer.splice(0),
+    texts: floatingTextBuffer.splice(0),
+  });
+}
+
+function applyPlayerState(p, data) {
+  p.x = data.x; p.y = data.y;
+  p.vx = data.vx; p.vy = data.vy;
+  p.facing = data.facing;
+  p.onGround = data.onGround;
+  p.jumps = data.jumps;
+  p.health = data.health; p.maxHealth = data.maxHealth;
+  p.dashing = data.dashing;
+  p.dashTimer = data.dashTimer;
+  p.dashCooldown = data.dashCooldown;
+  p.invincible = data.invincible;
+  p.ammo = data.ammo; p.maxAmmo = data.maxAmmo;
+  p.reloading = data.reloading;
+  p.reloadTimer = data.reloadTimer;
+  p.weapon = data.weapon;
+  p.shielding = data.shielding;
+  p.shieldEnergy = data.shieldEnergy;
+  p.maxShieldEnergy = data.maxShieldEnergy;
+  p.alive = data.alive;
+  p.shootCooldown = data.shootCooldown;
+  p.lastHitTimer = data.lastHitTimer;
+}
+
+function applyHostState(data) {
+  if (data.p1) applyPlayerState(player, data.p1);
+  if (data.p2) {
+    if (!player2) {
+      player2 = createPlayer(canvas.width * 2 / 3, { body: '#27ae60', dash: '#f39c12', skin: '#f4d35e', hat: '#1a5c2e', hatBand: '#f39c12', shoe: '#f39c12' });
+    }
+    applyPlayerState(player2, data.p2);
+  }
+
+  enemies = data.enemies.map(e => {
+    let def = enemyTypes[e.type];
+    return {
+      ...def, ...e,
+      w: def.w, h: def.h, color: def.color,
+      shootTimer: 0, patrolDir: e.facing,
+    };
+  });
+
+  bullets = data.bullets.map(b => ({ ...b, trail: [], damage: 0 }));
+  powerups = data.powerups;
+
+  state = data.state;
+  score = data.score;
+  if (data.level !== level) {
+    level = data.level;
+    generatePlatforms();
+  }
+  wave = data.wave;
+  wavesPerLevel = data.wavesPerLevel;
+  killStreak = data.killStreak;
+  slowMo = data.slowMo;
+  slowMoTimer = data.slowMoTimer;
+  screenShake = data.screenShake;
+  levelIntroTimer = data.levelIntroTimer;
+  levelTransitionTimer = data.levelTransitionTimer;
+
+  if (data.sfx) {
+    data.sfx.forEach(name => {
+      if (SFX[name]) SFX[name]();
+    });
+  }
+
+  if (data.texts) {
+    data.texts.forEach(t => {
+      floatingTexts.push({ ...t, maxLife: t.life });
+    });
+  }
+}
+
+function clientUpdate() {
+  let dt = slowMo;
+
+  [player, player2].forEach(p => {
+    if (!p || !p.alive) return;
+    p.vy += GRAVITY * dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+
+    if (p.y + p.h >= GROUND) {
+      p.y = GROUND - p.h;
+      p.vy = 0;
+      p.onGround = true;
+    }
+
+    platforms.forEach(plat => {
+      if (p.vy >= 0 &&
+          p.x + p.w / 2 > plat.x && p.x - p.w / 2 < plat.x + plat.w &&
+          p.y + p.h >= plat.y && p.y + p.h <= plat.y + plat.h + 10) {
+        p.y = plat.y - p.h;
+        p.vy = 0;
+        p.onGround = true;
+      }
+    });
+
+    p.x = Math.max(p.w / 2, Math.min(canvas.width - p.w / 2, p.x));
+
+    if (p.dashing || Math.abs(p.vx) > 3) {
+      p.trail.push({ x: p.x, y: p.y, alpha: 0.5 });
+      if (p.trail.length > 8) p.trail.shift();
+    } else {
+      if (p.trail.length > 0) p.trail.shift();
+    }
+  });
+
+  enemies.forEach(e => {
+    if (!e.alive) return;
+    if (e.dying) {
+      e.deathTimer -= dt;
+      if (e.deathVx) e.x += e.deathVx * dt;
+      if (e.deathVy !== undefined) {
+        e.deathVy += GRAVITY * dt;
+        e.y += e.deathVy * dt;
+      }
+      if (e.deathRotation !== undefined && e.deathRotSpeed) {
+        e.deathRotation += e.deathRotSpeed;
+      }
+      if (e.y + e.h >= GROUND) { e.y = GROUND - e.h; }
+      if (e.deathTimer <= 0) e.alive = false;
+      return;
+    }
+    e.vy += GRAVITY * dt;
+    e.y += e.vy * dt;
+    if (e.y + e.h >= GROUND) { e.y = GROUND - e.h; e.vy = 0; }
+  });
+
+  bullets.forEach(b => {
+    b.trail = b.trail || [];
+    b.trail.push({ x: b.x, y: b.y });
+    if (b.trail.length > 6) b.trail.shift();
+    b.x += b.vx * dt;
+    b.y += b.vy * dt;
+    b.life -= dt;
+  });
+  bullets = bullets.filter(b => b.life > 0 && b.x > -50 && b.x < canvas.width + 50);
+
+  particles.forEach(p => {
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 0.1;
+    p.life -= dt;
+  });
+  particles = particles.filter(p => p.life > 0);
+
+  casings.forEach(c => {
+    if (!c.grounded) {
+      c.vy += 0.3;
+      c.x += c.vx;
+      c.y += c.vy;
+      c.rotation += c.vr;
+      if (c.y >= GROUND - 2) { c.y = GROUND - 2; c.grounded = true; }
+    }
+  });
+  if (casings.length > 50) casings.splice(0, casings.length - 50);
+
+  floatingTexts.forEach(t => { t.y -= 0.5; t.life--; });
+  floatingTexts = floatingTexts.filter(t => t.life > 0);
+
+  if (screenShake > 0) screenShake *= 0.85;
+  if (screenShake < 0.5) screenShake = 0;
+}
+
 // ─── UPDATE ───
 function update() {
+  // Handle disconnect countdown
+  if (disconnected) {
+    disconnectTimer--;
+    if (disconnectTimer <= 0) {
+      cleanupOnline();
+      state = 'menu';
+    }
+    return;
+  }
+
+  // Client uses clientUpdate instead
+  if (onlineMode && isClient) {
+    clientUpdate();
+    return;
+  }
+
   // Handle level intro countdown
   if (state === 'levelIntro') {
     levelIntroTimer--;
@@ -2282,7 +2845,7 @@ function draw() {
 
     // Mode selection
     ctx.font = 'bold 20px monospace';
-    let modes = ['1 PLAYER', '2 PLAYERS (CO-OP)'];
+    let modes = ['1 PLAYER', 'LOCAL CO-OP', 'ONLINE CO-OP'];
     modes.forEach((mode, i) => {
       let my = 170 + i * 32;
       if (i === menuSelection) {
@@ -2319,8 +2882,8 @@ function draw() {
         ctx.fillText(action, canvas.width / 2 + 15, y);
         y += 24;
       });
-    } else {
-      // Co-op controls
+    } else if (menuSelection === 1) {
+      // Local co-op controls
       ctx.fillStyle = '#3498db';
       ctx.font = 'bold 16px monospace';
       ctx.textAlign = 'center';
@@ -2346,14 +2909,12 @@ function draw() {
         [';', 'Reload'],
       ];
       for (let i = 0; i < p1Lines.length; i++) {
-        // P1
         ctx.fillStyle = '#4ecdc4';
         ctx.textAlign = 'right';
         ctx.fillText(p1Lines[i][0], canvas.width / 2 - 180, y);
         ctx.fillStyle = '#aaa';
         ctx.textAlign = 'left';
         ctx.fillText(p1Lines[i][1], canvas.width / 2 - 170, y);
-        // P2
         ctx.fillStyle = '#f39c12';
         ctx.textAlign = 'right';
         ctx.fillText(p2Lines[i][0], canvas.width / 2 + 150, y);
@@ -2366,6 +2927,31 @@ function draw() {
       ctx.fillStyle = '#666';
       ctx.textAlign = 'center';
       ctx.fillText('M - Mute / Unmute', canvas.width / 2, y + 8);
+    } else {
+      // Online co-op controls
+      ctx.font = '14px monospace';
+      ctx.fillStyle = '#4ecdc4';
+      ctx.textAlign = 'center';
+      ctx.fillText('Both players use the same keys', canvas.width / 2, y);
+      ctx.fillText('on their own computer:', canvas.width / 2, y + 20);
+      y += 50;
+      const onlineLines = [
+        ['A / D  or  Arrows', 'Move'],
+        ['W / Space / Up', 'Jump (x2)'],
+        ['Q', 'Dash (invincible)'],
+        ['F', 'Shoot'],
+        ['E', 'Shield (blocks damage)'],
+        ['R', 'Reload'],
+      ];
+      onlineLines.forEach(([key, action]) => {
+        ctx.fillStyle = '#4ecdc4';
+        ctx.textAlign = 'right';
+        ctx.fillText(key, canvas.width / 2 - 15, y);
+        ctx.fillStyle = '#aaa';
+        ctx.textAlign = 'left';
+        ctx.fillText(action, canvas.width / 2 + 15, y);
+        y += 22;
+      });
     }
 
     ctx.textAlign = 'center';
@@ -2376,7 +2962,7 @@ function draw() {
 
     ctx.fillStyle = '#555';
     ctx.font = '12px monospace';
-    ctx.fillText('Up/Down to select mode', canvas.width / 2, 455);
+    ctx.fillText('Up/Down to select mode', canvas.width / 2, 460);
 
     if (highScore > 0) {
       ctx.fillStyle = '#888';
@@ -2408,10 +2994,17 @@ function draw() {
     ctx.font = '16px monospace';
     ctx.fillText(`Wave: ${wave}`, canvas.width / 2, 310);
 
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 18px monospace';
-    let blink = Math.sin(Date.now() * 0.004) > 0;
-    if (blink) ctx.fillText('Press ENTER to retry', canvas.width / 2, 370);
+    if (onlineMode && isClient) {
+      ctx.fillStyle = '#888';
+      ctx.font = '16px monospace';
+      let blink = Math.sin(Date.now() * 0.004) > 0;
+      if (blink) ctx.fillText('Waiting for host...', canvas.width / 2, 370);
+    } else {
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 18px monospace';
+      let blink = Math.sin(Date.now() * 0.004) > 0;
+      if (blink) ctx.fillText('Press ENTER to retry', canvas.width / 2, 370);
+    }
   }
 
   if (state === 'levelIntro') {
@@ -2465,10 +3058,17 @@ function draw() {
       ctx.fillText(weapons[lvlComp.reward].name.toUpperCase(), canvas.width / 2, 315);
     }
 
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 18px monospace';
-    let blinkLC = Math.sin(Date.now() * 0.004) > 0;
-    if (blinkLC) ctx.fillText('Press ENTER to continue', canvas.width / 2, 390);
+    if (onlineMode && isClient) {
+      ctx.fillStyle = '#888';
+      ctx.font = '16px monospace';
+      let blinkLC = Math.sin(Date.now() * 0.004) > 0;
+      if (blinkLC) ctx.fillText('Waiting for host...', canvas.width / 2, 390);
+    } else {
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 18px monospace';
+      let blinkLC = Math.sin(Date.now() * 0.004) > 0;
+      if (blinkLC) ctx.fillText('Press ENTER to continue', canvas.width / 2, 390);
+    }
   }
 
   if (state === 'won') {
@@ -2498,10 +3098,141 @@ function draw() {
     ctx.font = '16px monospace';
     ctx.fillText('You have conquered all 5 levels.', canvas.width / 2, 330);
 
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 18px monospace';
-    let blinkW = Math.sin(Date.now() * 0.004) > 0;
-    if (blinkW) ctx.fillText('Press ENTER to play again', canvas.width / 2, 400);
+    if (onlineMode && isClient) {
+      ctx.fillStyle = '#888';
+      ctx.font = '16px monospace';
+      let blinkW = Math.sin(Date.now() * 0.004) > 0;
+      if (blinkW) ctx.fillText('Waiting for host...', canvas.width / 2, 400);
+    } else {
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 18px monospace';
+      let blinkW = Math.sin(Date.now() * 0.004) > 0;
+      if (blinkW) ctx.fillText('Press ENTER to play again', canvas.width / 2, 400);
+    }
+  }
+
+  // ─── ONLINE MENU SCREENS ───
+  if (state === 'online-menu') {
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffe66d';
+    ctx.font = 'bold 36px monospace';
+    ctx.fillText('ONLINE CO-OP', canvas.width / 2, 120);
+
+    ctx.font = 'bold 22px monospace';
+    let onlineOpts = ['HOST GAME', 'JOIN GAME'];
+    onlineOpts.forEach((opt, i) => {
+      let oy = 200 + i * 40;
+      if (i === onlineMenuSelection) {
+        ctx.fillStyle = '#ffe66d';
+        ctx.fillText('> ' + opt + ' <', canvas.width / 2, oy);
+      } else {
+        ctx.fillStyle = '#666';
+        ctx.fillText(opt, canvas.width / 2, oy);
+      }
+    });
+
+    ctx.fillStyle = '#555';
+    ctx.font = '14px monospace';
+    ctx.fillText('Press ESC to go back', canvas.width / 2, 340);
+  }
+
+  if (state === 'online-host') {
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffe66d';
+    ctx.font = 'bold 28px monospace';
+    ctx.fillText('ROOM CODE', canvas.width / 2, 120);
+
+    ctx.font = 'bold 72px monospace';
+    ctx.fillStyle = '#4ecdc4';
+    ctx.fillText(roomCode || '...', canvas.width / 2, 220);
+
+    ctx.fillStyle = '#aaa';
+    ctx.font = '18px monospace';
+    let hostBlink = Math.sin(Date.now() * 0.004) > 0;
+    if (hostBlink || connectionStatus !== 'Waiting for player...') {
+      ctx.fillText(connectionStatus, canvas.width / 2, 280);
+    }
+
+    ctx.fillStyle = '#666';
+    ctx.font = '14px monospace';
+    ctx.fillText('Share this code with your friend', canvas.width / 2, 330);
+    ctx.fillText('Press ESC to cancel', canvas.width / 2, 360);
+  }
+
+  if (state === 'online-join') {
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffe66d';
+    ctx.font = 'bold 28px monospace';
+    ctx.fillText('ENTER ROOM CODE', canvas.width / 2, 120);
+
+    let boxW = 60, boxH = 70, gap = 12;
+    let totalW = boxW * 4 + gap * 3;
+    let startX = (canvas.width - totalW) / 2;
+    for (let i = 0; i < 4; i++) {
+      let bx = startX + i * (boxW + gap);
+      let by = 160;
+      ctx.fillStyle = i < roomCodeInput.length ? 'rgba(78,205,196,0.2)' : 'rgba(50,50,80,0.5)';
+      ctx.strokeStyle = i === roomCodeInput.length ? '#ffe66d' : '#555';
+      ctx.lineWidth = i === roomCodeInput.length ? 3 : 2;
+      ctx.beginPath();
+      ctx.roundRect(bx, by, boxW, boxH, 6);
+      ctx.fill();
+      ctx.stroke();
+      if (i < roomCodeInput.length) {
+        ctx.fillStyle = '#4ecdc4';
+        ctx.font = 'bold 40px monospace';
+        ctx.fillText(roomCodeInput[i], bx + boxW / 2, by + boxH / 2 + 14);
+      }
+    }
+
+    if (connectionStatus) {
+      ctx.fillStyle = connectionStatus.includes('Error') || connectionStatus.includes('not found') || connectionStatus.includes('failed') ? '#e94560' : '#aaa';
+      ctx.font = '16px monospace';
+      ctx.fillText(connectionStatus, canvas.width / 2, 290);
+    }
+
+    ctx.fillStyle = '#555';
+    ctx.font = '14px monospace';
+    ctx.fillText('Type the 4-letter code, then press ENTER', canvas.width / 2, 320);
+    ctx.fillText('Press ESC to go back', canvas.width / 2, 345);
+  }
+
+  // ─── DISCONNECT OVERLAY ───
+  if (disconnected) {
+    ctx.fillStyle = 'rgba(0,0,0,0.8)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#e94560';
+    ctx.font = 'bold 44px monospace';
+    ctx.fillText('DISCONNECTED', canvas.width / 2, 220);
+
+    ctx.fillStyle = '#aaa';
+    ctx.font = '18px monospace';
+    let secs = Math.ceil(disconnectTimer / 60);
+    ctx.fillText('Returning to menu in ' + secs + '...', canvas.width / 2, 280);
+  }
+
+  // ─── ONLINE HUD INDICATOR ───
+  if (onlineMode && (state === 'playing' || state === 'levelIntro')) {
+    let connected = conn && conn.open;
+    ctx.fillStyle = connected ? '#2ecc71' : '#e94560';
+    ctx.beginPath();
+    ctx.arc(8, 8, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#aaa';
+    ctx.font = 'bold 8px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(isHost ? 'HOST' : 'P2', 16, 11);
   }
 }
 
