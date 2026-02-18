@@ -753,6 +753,8 @@ let levelIntroTimer = 0;
 let coopMode = false;
 let player2 = null;
 let menuSelection = 0;
+let paused = false;
+let pauseSelection = 0;
 
 // ─── ONLINE MULTIPLAYER ───
 let onlineMode = false;
@@ -1076,6 +1078,31 @@ document.addEventListener('keydown', e => {
   if (['arrowup','arrowdown','arrowleft','arrowright',' '].includes(e.key.toLowerCase())) e.preventDefault();
   initAudio();
   if (e.key.toLowerCase() === 'm') { muted = !muted; return; }
+
+  // Pause menu
+  if (e.key === 'Escape' && state === 'playing') {
+    paused = !paused;
+    pauseSelection = 0;
+    return;
+  }
+  if (paused) {
+    if (e.key === 'ArrowUp' || e.key.toLowerCase() === 'w') {
+      pauseSelection = 0;
+      SFX.menuSelect();
+    } else if (e.key === 'ArrowDown' || e.key.toLowerCase() === 's') {
+      pauseSelection = 1;
+      SFX.menuSelect();
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      if (pauseSelection === 0) {
+        paused = false;
+      } else {
+        paused = false;
+        if (onlineMode) cleanupOnline();
+        state = 'menu';
+      }
+    }
+    return;
+  }
 
   // Client input: queue events and return early
   if (onlineMode && isClient && state === 'playing') {
@@ -2263,6 +2290,8 @@ function clientUpdate() {
 
 // ─── UPDATE ───
 function update() {
+  if (paused) return;
+
   // Handle disconnect countdown
   if (disconnected) {
     disconnectTimer--;
@@ -4625,6 +4654,35 @@ function draw() {
     ctx.font = 'bold 8px monospace';
     ctx.textAlign = 'left';
     ctx.fillText(isHost ? 'HOST' : 'P2', 16, 11);
+  }
+
+  // ─── PAUSE MENU OVERLAY ───
+  if (paused) {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffe66d';
+    ctx.font = 'bold 36px monospace';
+    ctx.fillText('PAUSED', canvas.width / 2, 180);
+
+    let options = ['CONTINUE', 'QUIT TO MENU'];
+    options.forEach((opt, i) => {
+      let y = 250 + i * 50;
+      if (i === pauseSelection) {
+        ctx.fillStyle = '#ffe66d';
+        ctx.font = 'bold 22px monospace';
+        ctx.fillText('> ' + opt + ' <', canvas.width / 2, y);
+      } else {
+        ctx.fillStyle = '#888';
+        ctx.font = '20px monospace';
+        ctx.fillText(opt, canvas.width / 2, y);
+      }
+    });
+
+    ctx.fillStyle = '#555';
+    ctx.font = '14px monospace';
+    ctx.fillText('Press ESC to resume', canvas.width / 2, 370);
   }
 }
 
