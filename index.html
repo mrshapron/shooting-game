@@ -40,6 +40,7 @@ canvas.height = 500;
 let audioCtx = null;
 let noiseBuffer = null;
 let audioInitialized = false;
+let muted = false;
 
 function initAudio() {
   if (audioInitialized) return;
@@ -54,7 +55,7 @@ function initAudio() {
 }
 
 function playTone(freq, type, duration, volume, freqEnd) {
-  if (!audioCtx) return;
+  if (!audioCtx || muted) return;
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
   osc.type = type;
@@ -71,7 +72,7 @@ function playTone(freq, type, duration, volume, freqEnd) {
 }
 
 function playNoise(duration, volume, filterFreq) {
-  if (!audioCtx) return;
+  if (!audioCtx || muted) return;
   const source = audioCtx.createBufferSource();
   source.buffer = noiseBuffer;
   const filter = audioCtx.createBiquadFilter();
@@ -135,7 +136,7 @@ const SFX = {
     playTone(50, 'sine', 0.35, 0.25);
   },
   pickup() {
-    if (!audioCtx) return;
+    if (!audioCtx || muted) return;
     const t = audioCtx.currentTime;
     [523, 659, 784].forEach((freq, i) => {
       const osc = audioCtx.createOscillator();
@@ -155,7 +156,7 @@ const SFX = {
     playNoise(0.03, 0.15, 3000);
   },
   waveStart() {
-    if (!audioCtx) return;
+    if (!audioCtx || muted) return;
     const t = audioCtx.currentTime;
     [0, 0.12].forEach(offset => {
       const osc = audioCtx.createOscillator();
@@ -171,7 +172,7 @@ const SFX = {
     });
   },
   levelComplete() {
-    if (!audioCtx) return;
+    if (!audioCtx || muted) return;
     const t = audioCtx.currentTime;
     [523, 659, 784, 1047].forEach((freq, i) => {
       const osc = audioCtx.createOscillator();
@@ -188,7 +189,7 @@ const SFX = {
     });
   },
   victory() {
-    if (!audioCtx) return;
+    if (!audioCtx || muted) return;
     const t = audioCtx.currentTime;
     [523, 659, 784, 1047, 1319].forEach((freq, i) => {
       const osc = audioCtx.createOscillator();
@@ -205,7 +206,7 @@ const SFX = {
     });
   },
   gameOver() {
-    if (!audioCtx) return;
+    if (!audioCtx || muted) return;
     const t = audioCtx.currentTime;
     [400, 300, 200].forEach((freq, i) => {
       const osc = audioCtx.createOscillator();
@@ -405,6 +406,7 @@ document.addEventListener('keydown', e => {
   keys[e.key.toLowerCase()] = true;
   if (['arrowup','arrowdown','arrowleft','arrowright',' '].includes(e.key.toLowerCase())) e.preventDefault();
   initAudio();
+  if (e.key.toLowerCase() === 'm') { muted = !muted; return; }
 
   if (state === 'menu' && (e.key === 'Enter' || e.key === ' ')) { startGame(); return; }
   if (state === 'dead' && (e.key === 'Enter' || e.key === ' ')) { startGame(); return; }
@@ -446,6 +448,18 @@ document.addEventListener('keydown', e => {
   }
 });
 document.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+
+// Mute button click handler
+const MUTE_BTN = { x: canvas.width - 38, y: canvas.height - 32, w: 26, h: 22 };
+canvas.addEventListener('click', e => {
+  const rect = canvas.getBoundingClientRect();
+  const cx = (e.clientX - rect.left) * (canvas.width / rect.width);
+  const cy = (e.clientY - rect.top) * (canvas.height / rect.height);
+  if (cx >= MUTE_BTN.x && cx <= MUTE_BTN.x + MUTE_BTN.w &&
+      cy >= MUTE_BTN.y && cy <= MUTE_BTN.y + MUTE_BTN.h) {
+    muted = !muted;
+  }
+});
 
 // ─── WEAPON DEFINITIONS ───
 const weapons = {
@@ -1921,6 +1935,23 @@ function draw() {
     ctx.font = 'bold 14px monospace';
     ctx.textAlign = 'left';
     ctx.fillText(`SLOW-MO: ${Math.ceil(slowMoTimer / 60)}s`, 20, 68);
+  }
+
+  // Mute button (bottom-right)
+  ctx.fillStyle = 'rgba(255,255,255,0.15)';
+  ctx.beginPath();
+  ctx.roundRect(MUTE_BTN.x, MUTE_BTN.y, MUTE_BTN.w, MUTE_BTN.h, 4);
+  ctx.fill();
+  ctx.fillStyle = muted ? '#e94560' : '#fff';
+  ctx.font = 'bold 14px monospace';
+  ctx.textAlign = 'center';
+  if (muted) {
+    ctx.fillText('\\', MUTE_BTN.x + MUTE_BTN.w / 2, MUTE_BTN.y + 16);
+    ctx.fillStyle = 'rgba(233,69,96,0.5)';
+    ctx.font = '10px monospace';
+    ctx.fillText('OFF', MUTE_BTN.x + MUTE_BTN.w / 2, MUTE_BTN.y + MUTE_BTN.h + 10);
+  } else {
+    ctx.fillText(')))', MUTE_BTN.x + MUTE_BTN.w / 2, MUTE_BTN.y + 16);
   }
 
   ctx.restore();
