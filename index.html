@@ -240,15 +240,111 @@ let musicGain = null;
 let musicPlaying = false;
 let musicState = '';
 let musicNodes = [];
-let musicInterval = null;
+let musicIntervals = [];
 let musicStep = 0;
 
 function stopMusic() {
   musicNodes.forEach(n => { try { n.stop(); } catch(e) {} try { n.disconnect(); } catch(e) {} });
   musicNodes = [];
-  if (musicInterval) { clearInterval(musicInterval); musicInterval = null; }
+  musicIntervals.forEach(id => clearInterval(id));
+  musicIntervals = [];
   musicPlaying = false;
   musicState = '';
+}
+
+// Helper: play a filtered note with attack/release envelope
+function musicNote(freq, type, vol, dur, filterFreq, delay) {
+  if (muted) return;
+  const t = audioCtx.currentTime + (delay || 0);
+  const osc = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  const f = audioCtx.createBiquadFilter();
+  osc.type = type;
+  osc.frequency.value = freq;
+  f.type = 'lowpass';
+  f.frequency.value = filterFreq || 2000;
+  g.gain.setValueAtTime(0.001, t);
+  g.gain.linearRampToValueAtTime(vol, t + 0.02);
+  g.gain.setValueAtTime(vol, t + dur * 0.6);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  osc.connect(f);
+  f.connect(g);
+  g.connect(musicGain);
+  osc.start(t);
+  osc.stop(t + dur);
+}
+
+// Helper: play a chord (array of freqs)
+function musicChord(freqs, type, vol, dur, filterFreq, delay) {
+  freqs.forEach(freq => musicNote(freq, type, vol / freqs.length, dur, filterFreq, delay));
+}
+
+// Helper: kick drum
+function musicKick(vol, delay) {
+  if (muted) return;
+  const t = audioCtx.currentTime + (delay || 0);
+  const osc = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(160, t);
+  osc.frequency.exponentialRampToValueAtTime(35, t + 0.15);
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+  osc.connect(g);
+  g.connect(musicGain);
+  osc.start(t);
+  osc.stop(t + 0.2);
+}
+
+// Helper: snare hit
+function musicSnare(vol, delay) {
+  if (muted) return;
+  const t = audioCtx.currentTime + (delay || 0);
+  const src = audioCtx.createBufferSource();
+  src.buffer = noiseBuffer;
+  const f = audioCtx.createBiquadFilter();
+  f.type = 'bandpass';
+  f.frequency.value = 4000;
+  f.Q.value = 0.8;
+  const g = audioCtx.createGain();
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+  src.connect(f);
+  f.connect(g);
+  g.connect(musicGain);
+  src.start(t);
+  src.stop(t + 0.15);
+  // Body tone
+  const body = audioCtx.createOscillator();
+  const bg = audioCtx.createGain();
+  body.type = 'triangle';
+  body.frequency.value = 200;
+  bg.gain.setValueAtTime(vol * 0.5, t);
+  bg.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+  body.connect(bg);
+  bg.connect(musicGain);
+  body.start(t);
+  body.stop(t + 0.08);
+}
+
+// Helper: hi-hat
+function musicHihat(vol, open, delay) {
+  if (muted) return;
+  const t = audioCtx.currentTime + (delay || 0);
+  const src = audioCtx.createBufferSource();
+  src.buffer = noiseBuffer;
+  const f = audioCtx.createBiquadFilter();
+  f.type = 'highpass';
+  f.frequency.value = 7000;
+  const g = audioCtx.createGain();
+  const dur = open ? 0.12 : 0.04;
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  src.connect(f);
+  f.connect(g);
+  g.connect(musicGain);
+  src.start(t);
+  src.stop(t + dur);
 }
 
 function startMusic(type) {
@@ -261,183 +357,180 @@ function startMusic(type) {
     musicGain = audioCtx.createGain();
     musicGain.connect(audioCtx.destination);
   }
-  musicGain.gain.setValueAtTime(0.35, audioCtx.currentTime);
-
+  musicGain.gain.setValueAtTime(0.3, audioCtx.currentTime);
   musicStep = 0;
 
   if (type === 'menu') {
-    // Ambient pad with slow arpeggio
-    const padFreqs = [110, 164.81, 220];
-    padFreqs.forEach(freq => {
+    // ── Haunting western atmosphere ──
+    // Warm detuned drone in Am
+    [109, 111, 55.5].forEach(freq => {
       const osc = audioCtx.createOscillator();
       const g = audioCtx.createGain();
-      const filter = audioCtx.createBiquadFilter();
+      const f = audioCtx.createBiquadFilter();
       osc.type = 'sine';
       osc.frequency.value = freq;
-      filter.type = 'lowpass';
-      filter.frequency.value = 400;
-      g.gain.value = 0.5;
-      osc.connect(filter);
-      filter.connect(g);
+      f.type = 'lowpass';
+      f.frequency.value = 300;
+      g.gain.value = 0.35;
+      osc.connect(f);
+      f.connect(g);
       g.connect(musicGain);
       osc.start();
       musicNodes.push(osc);
     });
 
-    const arpNotes = [329.63, 392, 440, 523.25, 440, 392, 329.63, 261.63];
-    musicInterval = setInterval(() => {
+    // Slow haunting melody — Am pentatonic with long sustain
+    // A4  C5  E5  D5 | C5  A4  G4  A4 | E4  G4  A4  C5 | A4  G4  E4  G4
+    const melody = [440, 523.25, 659.25, 587.33, 523.25, 440, 392, 440,
+                    329.63, 392, 440, 523.25, 440, 392, 329.63, 392];
+    musicIntervals.push(setInterval(() => {
       if (muted || !musicPlaying) return;
-      const note = arpNotes[musicStep % arpNotes.length];
-      const osc = audioCtx.createOscillator();
-      const g = audioCtx.createGain();
-      osc.type = 'triangle';
-      osc.frequency.value = note;
-      g.gain.setValueAtTime(0.25, audioCtx.currentTime);
-      g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
-      osc.connect(g);
-      g.connect(musicGain);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.5);
+      const note = melody[musicStep % melody.length];
+      musicNote(note, 'sine', 0.18, 0.9, 1200);
+      // Echo/delay effect — quieter repeat
+      musicNote(note * 1.001, 'sine', 0.08, 0.7, 800, 0.25);
       musicStep++;
-    }, 400);
+    }, 600));
+
+    // Slow chord changes every 4 melody steps
+    const chords = [
+      [220, 261.63, 329.63],    // Am
+      [174.61, 220, 261.63],    // F
+      [196, 246.94, 329.63],    // Em
+      [220, 261.63, 329.63],    // Am
+    ];
+    let chordStep = 0;
+    musicIntervals.push(setInterval(() => {
+      if (muted || !musicPlaying) return;
+      const chord = chords[chordStep % chords.length];
+      musicChord(chord, 'sine', 0.25, 2.2, 600);
+      chordStep++;
+    }, 2400));
 
   } else if (type === 'action') {
-    // Driving bass line + rhythm
-    const bassLine = [82.41, 82.41, 110, 98, 82.41, 82.41, 73.42, 82.41,
-                      82.41, 82.41, 110, 98, 130.81, 110, 98, 82.41];
-    const hihat = () => {
-      if (muted) return;
-      const src = audioCtx.createBufferSource();
-      src.buffer = noiseBuffer;
-      const f = audioCtx.createBiquadFilter();
-      f.type = 'highpass';
-      f.frequency.value = 8000;
-      const g = audioCtx.createGain();
-      g.gain.setValueAtTime(0.12, audioCtx.currentTime);
-      g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.06);
-      src.connect(f);
-      f.connect(g);
-      g.connect(musicGain);
-      src.start();
-      src.stop(audioCtx.currentTime + 0.06);
-    };
+    // ── Driving dark synth ──
+    // BPM ~128, 8th note = ~234ms
+    const stepMs = 234;
 
-    musicInterval = setInterval(() => {
+    // Bass line follows Am - F - Am - Em chord progression (2 bars each = 16 steps)
+    // Groovy rhythmic pattern with rests (0 = rest)
+    const bass = [110, 0, 110, 110, 0, 130.81, 110, 0,
+                  87.31, 0, 87.31, 110, 0, 87.31, 98, 0,
+                  110, 0, 110, 110, 0, 130.81, 110, 0,
+                  82.41, 0, 82.41, 110, 98, 82.41, 110, 0];
+
+    // Lead melody riff — plays on top, pentatonic Am
+    // 0 = rest, plays every 2 steps offset
+    const lead = [0, 440, 0, 523.25, 659.25, 0, 523.25, 440,
+                  0, 392, 0, 440, 523.25, 0, 440, 392,
+                  0, 440, 0, 523.25, 659.25, 0, 587.33, 523.25,
+                  0, 440, 0, 392, 329.63, 0, 392, 440];
+
+    // Chord stabs on downbeats (every 8 steps)
+    const stabs = [
+      [220, 261.63, 329.63],    // Am
+      [174.61, 220, 261.63],    // F
+      [220, 261.63, 329.63],    // Am
+      [164.81, 246.94, 329.63], // Em
+    ];
+
+    musicIntervals.push(setInterval(() => {
       if (muted || !musicPlaying) return;
-      const note = bassLine[musicStep % bassLine.length];
-      // Bass note
-      const osc = audioCtx.createOscillator();
-      const g = audioCtx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.value = note;
-      const f = audioCtx.createBiquadFilter();
-      f.type = 'lowpass';
-      f.frequency.value = 300;
-      g.gain.setValueAtTime(0.5, audioCtx.currentTime);
-      g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.18);
-      osc.connect(f);
-      f.connect(g);
-      g.connect(musicGain);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.18);
+      const s = musicStep % 32;
 
-      // Hi-hat on every step
-      hihat();
-
-      // Kick on beats 0, 4, 8, 12
-      if (musicStep % 4 === 0) {
-        const kick = audioCtx.createOscillator();
-        const kg = audioCtx.createGain();
-        kick.type = 'sine';
-        kick.frequency.setValueAtTime(150, audioCtx.currentTime);
-        kick.frequency.exponentialRampToValueAtTime(30, audioCtx.currentTime + 0.12);
-        kg.gain.setValueAtTime(0.6, audioCtx.currentTime);
-        kg.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
-        kick.connect(kg);
-        kg.connect(musicGain);
-        kick.start();
-        kick.stop(audioCtx.currentTime + 0.15);
+      // Bass
+      const bassNote = bass[s];
+      if (bassNote > 0) {
+        musicNote(bassNote, 'sawtooth', 0.35, 0.2, 350);
+        // Sub bass layer
+        musicNote(bassNote / 2, 'sine', 0.25, 0.18, 200);
       }
 
-      // Snare on beats 4, 12
-      if (musicStep % 8 === 4) {
-        const src = audioCtx.createBufferSource();
-        src.buffer = noiseBuffer;
-        const sf = audioCtx.createBiquadFilter();
-        sf.type = 'bandpass';
-        sf.frequency.value = 3000;
-        const sg = audioCtx.createGain();
-        sg.gain.setValueAtTime(0.2, audioCtx.currentTime);
-        sg.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
-        src.connect(sf);
-        sf.connect(sg);
-        sg.connect(musicGain);
-        src.start();
-        src.stop(audioCtx.currentTime + 0.12);
+      // Lead melody
+      const leadNote = lead[s];
+      if (leadNote > 0) {
+        musicNote(leadNote, 'triangle', 0.15, 0.3, 1500);
       }
+
+      // Chord stabs every 8 steps
+      if (s % 8 === 0) {
+        const chord = stabs[Math.floor(s / 8) % stabs.length];
+        musicChord(chord, 'sawtooth', 0.2, 0.15, 800);
+      }
+
+      // Drums: Kick on 0,4,8,12... Snare on 4,12,20,28
+      if (s % 4 === 0) musicKick(0.5);
+      if (s % 8 === 4) musicSnare(0.3);
+
+      // Hi-hats: every step, open on offbeats
+      musicHihat(0.08, s % 2 === 1);
 
       musicStep++;
-    }, 140);
+    }, stepMs));
 
   } else if (type === 'boss') {
-    // Intense boss music - faster, deeper, more aggressive
-    const bassLine = [55, 55, 65.41, 55, 73.42, 65.41, 55, 55,
-                      55, 55, 82.41, 73.42, 65.41, 55, 73.42, 55];
-    musicInterval = setInterval(() => {
+    // ── Heavy boss theme — darker, faster, more intense ──
+    // BPM ~155, 8th note = ~194ms
+    const stepMs = 194;
+
+    // Menacing bass in Em — chromatic tension
+    const bass = [82.41, 82.41, 0, 82.41, 87.31, 82.41, 0, 77.78,
+                  82.41, 82.41, 0, 82.41, 92.50, 87.31, 82.41, 0,
+                  65.41, 65.41, 0, 65.41, 69.30, 65.41, 0, 73.42,
+                  82.41, 82.41, 0, 98, 87.31, 82.41, 73.42, 82.41];
+
+    // Aggressive lead — minor scale runs
+    const lead = [659.25, 0, 587.33, 523.25, 0, 493.88, 523.25, 0,
+                  587.33, 0, 659.25, 698.46, 0, 659.25, 587.33, 0,
+                  523.25, 0, 493.88, 440, 0, 493.88, 523.25, 0,
+                  587.33, 0, 659.25, 587.33, 523.25, 0, 493.88, 523.25];
+
+    // Power chord stabs
+    const stabs = [
+      [164.81, 246.94, 329.63],  // Em
+      [146.83, 220, 293.66],     // Dm
+      [130.81, 196, 261.63],     // C
+      [123.47, 185.00, 246.94],  // B
+    ];
+
+    musicIntervals.push(setInterval(() => {
       if (muted || !musicPlaying) return;
-      const note = bassLine[musicStep % bassLine.length];
+      const s = musicStep % 32;
 
-      // Heavy bass
-      const osc = audioCtx.createOscillator();
-      const g = audioCtx.createGain();
-      const f = audioCtx.createBiquadFilter();
-      osc.type = 'square';
-      osc.frequency.value = note;
-      f.type = 'lowpass';
-      f.frequency.value = 250;
-      g.gain.setValueAtTime(0.5, audioCtx.currentTime);
-      g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
-      osc.connect(f);
-      f.connect(g);
-      g.connect(musicGain);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.12);
-
-      // Double-time hi-hat
-      for (let h = 0; h < 2; h++) {
-        const src = audioCtx.createBufferSource();
-        src.buffer = noiseBuffer;
-        const hf = audioCtx.createBiquadFilter();
-        hf.type = 'highpass';
-        hf.frequency.value = 9000;
-        const hg = audioCtx.createGain();
-        const t = audioCtx.currentTime + h * 0.055;
-        hg.gain.setValueAtTime(0.1, t);
-        hg.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
-        src.connect(hf);
-        hf.connect(hg);
-        hg.connect(musicGain);
-        src.start(t);
-        src.stop(t + 0.04);
+      // Heavy bass with distortion-like overtone
+      const bassNote = bass[s];
+      if (bassNote > 0) {
+        musicNote(bassNote, 'square', 0.3, 0.16, 280);
+        musicNote(bassNote / 2, 'sine', 0.3, 0.16, 150);
+        // Gritty overtone
+        musicNote(bassNote * 1.5, 'sawtooth', 0.08, 0.1, 400);
       }
 
-      // Heavy kick every 2 beats
-      if (musicStep % 2 === 0) {
-        const kick = audioCtx.createOscillator();
-        const kg = audioCtx.createGain();
-        kick.type = 'sine';
-        kick.frequency.setValueAtTime(180, audioCtx.currentTime);
-        kick.frequency.exponentialRampToValueAtTime(25, audioCtx.currentTime + 0.15);
-        kg.gain.setValueAtTime(0.7, audioCtx.currentTime);
-        kg.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.18);
-        kick.connect(kg);
-        kg.connect(musicGain);
-        kick.start();
-        kick.stop(audioCtx.currentTime + 0.18);
+      // Aggressive lead
+      const leadNote = lead[s];
+      if (leadNote > 0) {
+        musicNote(leadNote, 'sawtooth', 0.12, 0.2, 2000);
       }
+
+      // Power chord stabs every 8 steps
+      if (s % 8 === 0) {
+        const chord = stabs[Math.floor(s / 8) % stabs.length];
+        musicChord(chord, 'sawtooth', 0.25, 0.12, 1000);
+      }
+
+      // Double-time kick (every 2 steps)
+      if (s % 2 === 0) musicKick(0.55);
+      // Snare on 4, 12, 20, 28
+      if (s % 8 === 4) musicSnare(0.35);
+      // Extra snare hits for intensity
+      if (s === 14 || s === 30) musicSnare(0.2);
+
+      // Rapid hi-hats
+      musicHihat(0.06, false);
+      musicHihat(0.04, false, stepMs / 2000);
 
       musicStep++;
-    }, 110);
+    }, stepMs));
   }
 }
 
@@ -447,7 +540,7 @@ function updateMusic() {
     if (musicGain) musicGain.gain.setValueAtTime(0, audioCtx.currentTime);
     return;
   }
-  if (musicGain) musicGain.gain.setValueAtTime(0.35, audioCtx.currentTime);
+  if (musicGain) musicGain.gain.setValueAtTime(0.3, audioCtx.currentTime);
 
   let targetMusic = '';
   if (state === 'menu' || state === 'online-menu' || state === 'online-host' || state === 'online-join') {
