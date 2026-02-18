@@ -389,7 +389,10 @@ function createPlayer() {
     reloadTimer: 0,
     weapon: 'pistol',
     trail: [],
-    shielding: false
+    shielding: false,
+    shieldEnergy: 180,
+    maxShieldEnergy: 180,
+    lastHitTimer: 0
   };
 }
 
@@ -784,10 +787,24 @@ function update() {
     slowMo = 1;
   }
 
-  // Shield
+  // Shield (limited energy)
   let wasShielding = player.shielding;
-  player.shielding = !!keys['e'];
+  player.shielding = !!keys['e'] && player.shieldEnergy > 0;
   if (player.shielding && !wasShielding) SFX.shieldUp();
+  if (player.shielding) {
+    player.shieldEnergy = Math.max(0, player.shieldEnergy - dt);
+    if (player.shieldEnergy <= 0) player.shielding = false;
+  } else {
+    player.shieldEnergy = Math.min(player.maxShieldEnergy, player.shieldEnergy + dt * 0.4);
+  }
+
+  // Health regen (after 4 seconds without taking damage)
+  player.lastHitTimer += dt;
+  if (player.lastHitTimer > 240 && player.health < player.maxHealth) {
+    if (Math.floor(player.lastHitTimer) % 30 === 0) {
+      player.health = Math.min(player.maxHealth, player.health + 1);
+    }
+  }
 
   // Player movement
   let moveDir = 0;
@@ -902,6 +919,7 @@ function update() {
           screenShake = 4;
         } else if (player.invincible <= 0) {
           player.health--;
+          player.lastHitTimer = 0;
           screenShake = 10;
         }
         e.alive = false;
@@ -1039,6 +1057,7 @@ function update() {
           }
         } else {
         player.health--;
+        player.lastHitTimer = 0;
         b.life = 0;
         screenShake = 6;
         player.invincible = 30;
@@ -1942,6 +1961,13 @@ function draw() {
       ctx.fillRect(-player.w / 2, player.h + 6, player.w, 3);
     }
 
+    // ── Shield energy bar ──
+    let shieldRatio = player.shieldEnergy / player.maxShieldEnergy;
+    ctx.fillStyle = 'rgba(50,50,80,0.5)';
+    ctx.fillRect(-player.w / 2, player.h + 11, player.w, 3);
+    ctx.fillStyle = shieldRatio > 0.3 ? '#66bbff' : '#ff6666';
+    ctx.fillRect(-player.w / 2, player.h + 11, player.w * shieldRatio, 3);
+
     ctx.restore();
     ctx.globalAlpha = 1;
   }
@@ -1970,6 +1996,27 @@ function draw() {
   ctx.font = 'bold 10px monospace';
   ctx.textAlign = 'center';
   ctx.fillText(`HP ${player.health}/${player.maxHealth}`, 95, 26);
+  // Regen indicator
+  if (player.lastHitTimer > 240 && player.health < player.maxHealth) {
+    ctx.fillStyle = '#2ecc71';
+    ctx.font = 'bold 10px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('+ REGEN', 175, 26);
+  }
+
+  // Shield energy bar
+  ctx.fillStyle = '#333';
+  ctx.fillRect(20, 32, 150, 8);
+  let hudShieldRatio = player.shieldEnergy / player.maxShieldEnergy;
+  ctx.fillStyle = hudShieldRatio > 0.3 ? '#66bbff' : '#ff6666';
+  ctx.fillRect(20, 32, 150 * hudShieldRatio, 8);
+  ctx.strokeStyle = '#555';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(20, 32, 150, 8);
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 7px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('SHIELD', 95, 39);
 
   // Ammo
   ctx.textAlign = 'left';
