@@ -197,6 +197,35 @@ const SFX = {
     echo.connect(ef); ef.connect(eg); eg.connect(audioCtx.destination);
     echo.start(t); echo.stop(t + 0.25);
   },
+  shoot_rpg() {
+    if (!audioCtx || muted) return;
+    const t = audioCtx.currentTime;
+    // Rocket whoosh
+    const whoosh = audioCtx.createBufferSource();
+    whoosh.buffer = noiseBuffer;
+    const wf = audioCtx.createBiquadFilter();
+    wf.type = 'bandpass'; wf.frequency.value = 400; wf.Q.value = 0.5;
+    const wg = audioCtx.createGain();
+    wg.gain.setValueAtTime(0.2, t);
+    wg.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+    whoosh.connect(wf); wf.connect(wg); wg.connect(audioCtx.destination);
+    whoosh.start(t); whoosh.stop(t + 0.3);
+    // Low thud
+    playTone(60, 'sine', 0.2, 0.18, 30);
+  },
+  grenadeThrow() {
+    if (!audioCtx || muted) return;
+    const t = audioCtx.currentTime;
+    playTone(300, 'sine', 0.1, 0.1, 500);
+    playNoise(0.08, 0.08, 1200);
+  },
+  grenadeBounce() {
+    playTone(400, 'triangle', 0.05, 0.08, 200);
+  },
+  grenadeExplode() {
+    playNoise(0.4, 0.35, 250);
+    playTone(40, 'sine', 0.4, 0.3, 20);
+  },
   enemyShoot() {
     if (!audioCtx || muted) return;
     const t = audioCtx.currentTime;
@@ -841,6 +870,109 @@ const levels = [
     ],
     reward: null,
   },
+  {
+    name: 'Skyline',
+    subtitle: 'Death from above...',
+    waves: 5,
+    sky: ['#0a1428', '#152238', '#1a3050'],
+    ground: ['#1a2a3a', '#12202e', '#0a1620'],
+    groundLine: '#3a7aaa', groundGlow: '#4a9aff',
+    backdrop: 'skyline',
+    enemyTypes: ['fast', 'sniper', 'drone'],
+    enemyScale: 2.0,
+    platforms: [
+      { x: 100, y: -90, w: 110, h: 12 },
+      { x: 350, y: -170, w: 100, h: 12 },
+      { x: 600, y: -110, w: 110, h: 12 },
+      { x: 200, y: -250, w: 90, h: 12 },
+      { x: 700, y: -220, w: 90, h: 12 },
+    ],
+    reward: null,
+  },
+  {
+    name: 'The Airfield',
+    subtitle: 'Incoming gunships!',
+    waves: 5,
+    sky: ['#0e0e1a', '#1a1a2e', '#252538'],
+    ground: ['#2a2a2a', '#1e1e1e', '#121212'],
+    groundLine: '#5a5a5a', groundGlow: '#8a8a8a',
+    backdrop: 'airfield',
+    enemyTypes: ['fast', 'tank', 'drone', 'gunship'],
+    enemyScale: 2.5,
+    platforms: [
+      { x: 80, y: -100, w: 130, h: 12 },
+      { x: 380, y: -80, w: 140, h: 12 },
+      { x: 680, y: -100, w: 130, h: 12 },
+      { x: 230, y: -190, w: 100, h: 12 },
+      { x: 570, y: -190, w: 100, h: 12 },
+    ],
+    reward: 'rpg',
+  },
+  {
+    name: 'Underground',
+    subtitle: 'Tight spaces, big trouble',
+    waves: 5,
+    sky: ['#0a0808', '#141010', '#1a1210'],
+    ground: ['#2a2018', '#1e1810', '#120e08'],
+    groundLine: '#6a5a3a', groundGlow: '#8a7a4a',
+    backdrop: 'underground',
+    enemyTypes: ['tank', 'bomber', 'fast', 'basic'],
+    enemyScale: 3.0,
+    platforms: [
+      { x: 60, y: -70, w: 100, h: 12 },
+      { x: 200, y: -150, w: 80, h: 12 },
+      { x: 350, y: -90, w: 120, h: 12 },
+      { x: 520, y: -170, w: 80, h: 12 },
+      { x: 680, y: -100, w: 100, h: 12 },
+      { x: 800, y: -60, w: 80, h: 12 },
+      { x: 420, y: -240, w: 60, h: 12 },
+    ],
+    reward: null,
+  },
+  {
+    name: 'Sky Fortress',
+    subtitle: 'Their domain, your nightmare',
+    waves: 6,
+    sky: ['#12082a', '#1e1040', '#2a1858'],
+    ground: ['#2a1a3a', '#1e102a', '#120a1a'],
+    groundLine: '#7a4aaa', groundGlow: '#9a6aff',
+    backdrop: 'skyfortress',
+    enemyTypes: ['drone', 'gunship', 'sniper'],
+    enemyScale: 3.2,
+    platforms: [
+      { x: 50, y: -100, w: 90, h: 12 },
+      { x: 200, y: -180, w: 80, h: 12 },
+      { x: 370, y: -120, w: 100, h: 12 },
+      { x: 530, y: -200, w: 80, h: 12 },
+      { x: 700, y: -130, w: 90, h: 12 },
+      { x: 430, y: -280, w: 70, h: 12 },
+      { x: 150, y: -260, w: 70, h: 12 },
+      { x: 770, y: -250, w: 70, h: 12 },
+    ],
+    reward: null,
+  },
+  {
+    name: 'Omega',
+    subtitle: 'The end of everything',
+    waves: 7,
+    sky: ['#1a0000', '#2e0808', '#3a1010'],
+    ground: ['#3a1a0a', '#2a0e05', '#1a0500'],
+    groundLine: '#aa4a2a', groundGlow: '#ff6a2a',
+    backdrop: 'omega',
+    enemyTypes: ['drone', 'gunship', 'tank', 'bomber'],
+    enemyScale: 3.5,
+    hasBoss: true,
+    hasMegaBoss: true,
+    platforms: [
+      { x: 100, y: -100, w: 100, h: 12 },
+      { x: 300, y: -180, w: 120, h: 12 },
+      { x: 550, y: -100, w: 100, h: 12 },
+      { x: 750, y: -180, w: 100, h: 12 },
+      { x: 200, y: -270, w: 80, h: 12 },
+      { x: 630, y: -270, w: 80, h: 12 },
+    ],
+    reward: null,
+  },
 ];
 
 function getCurrentLevel() {
@@ -887,6 +1019,9 @@ function createPlayer(startX, colors) {
     maxShieldEnergy: 180,
     lastHitTimer: 0,
     alive: true,
+    grenadeCount: 3,
+    maxGrenades: 5,
+    grenadeCooldown: 0,
     bodyColor: colors.body,
     dashColor: colors.dash,
     skinColor: colors.skin,
@@ -904,6 +1039,7 @@ let powerups = [];
 let floatingTexts = [];
 let platforms = [];
 let casings = [];
+let grenades = [];
 let stars = [];
 
 // Generate starfield
@@ -952,6 +1088,9 @@ document.addEventListener('keydown', e => {
     }
     if (k === 'r') {
       clientInputState.events.push('reload');
+    }
+    if (k === 'g') {
+      clientInputState.events.push('grenade');
     }
     return;
   }
@@ -1076,6 +1215,14 @@ document.addEventListener('keydown', e => {
       player2.reloading = true;
       player2.reloadTimer = 40;
     }
+    // P1 Grenade
+    if (e.key.toLowerCase() === 'g' && player.alive) {
+      throwGrenade(player);
+    }
+    // P2 Grenade (local co-op only)
+    if (coopMode && !onlineMode && e.key === ',' && player2 && player2.alive) {
+      throwGrenade(player2);
+    }
   }
 });
 document.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
@@ -1098,6 +1245,7 @@ const weapons = {
   shotgun: { name: 'Shotgun', fireRate: 30, damage: 1, speed: 8, spread: 0.15, ammo: 12, pellets: 5, color: '#ff6b6b', size: 3, auto: false },
   smg: { name: 'SMG', fireRate: 6, damage: 0.5, speed: 11, spread: 0.08, ammo: 50, color: '#4ecdc4', size: 2, auto: true },
   rifle: { name: 'Rifle', fireRate: 25, damage: 3, speed: 15, spread: 0.01, ammo: 10, color: '#ff9f43', size: 4, auto: false },
+  rpg: { name: 'RPG', fireRate: 60, damage: 8, speed: 7, spread: 0.02, ammo: 5, color: '#ff5252', size: 6, auto: false, explosive: true, blastRadius: 80 },
 };
 
 // ─── ENEMY TYPES ───
@@ -1108,6 +1256,9 @@ const enemyTypes = {
   sniper: { w: 22, h: 42, health: 2, speed: 0.2, shootRate: 200, color: '#06d6a0', bulletSpeed: 5.5, score: 250 },
   bomber: { w: 28, h: 38, health: 2, speed: 0.8, shootRate: 0, color: '#ff006e', bulletSpeed: 0, score: 200, bomber: true },
   boss: { w: 50, h: 64, health: 50, speed: 0.8, shootRate: 35, color: '#ff0000', bulletSpeed: 5, score: 2000, boss: true },
+  drone: { w: 18, h: 18, health: 2, speed: 1.2, shootRate: 100, color: '#00e5ff', bulletSpeed: 3, score: 200, flying: true, flyHeight: 120 },
+  gunship: { w: 40, h: 28, health: 8, speed: 0.4, shootRate: 60, color: '#7c4dff', bulletSpeed: 3.5, score: 400, flying: true, flyHeight: 160, burstCount: 3 },
+  megaboss: { w: 60, h: 76, health: 100, speed: 0.6, shootRate: 25, color: '#ff1744', bulletSpeed: 5, score: 5000, boss: true, mega: true },
 };
 
 // ─── PLATFORMS ───
@@ -1129,6 +1280,7 @@ function startGame() {
   powerups = [];
   floatingTexts = [];
   casings = [];
+  grenades = [];
   score = 0;
   level = 1;
   wave = 0;
@@ -1147,6 +1299,7 @@ function startLevel() {
   bullets = [];
   enemies = [];
   powerups = [];
+  grenades = [];
   generatePlatforms();
   state = 'levelIntro';
   levelIntroTimer = 180; // 3 seconds
@@ -1201,9 +1354,9 @@ function spawnWave() {
   let count = Math.min(2 + wave + level, 14);
   let types = lvl.enemyTypes;
 
-  // Last wave of level 5 spawns a boss
+  // Last wave spawns a boss (or megaboss)
   if (lvl.hasBoss && wave === wavesPerLevel) {
-    spawnEnemy('boss');
+    spawnEnemy(lvl.hasMegaBoss ? 'megaboss' : 'boss');
     count = Math.floor(count / 2);
   }
 
@@ -1232,13 +1385,16 @@ function spawnEnemy(type) {
   let fromRight = Math.random() > 0.5;
   let x = fromRight ? canvas.width + 30 : -30;
   let y = GROUND;
-  // Sometimes spawn on platforms
-  if (Math.random() > 0.5 && platforms.length > 0) {
+  // Flying enemies spawn at their fly height
+  if (def.flying) {
+    y = GROUND - def.flyHeight - Math.random() * 60;
+  } else if (Math.random() > 0.5 && platforms.length > 0) {
+    // Sometimes spawn on platforms
     let p = platforms[Math.floor(Math.random() * platforms.length)];
     y = p.y - def.h;
     x = p.x + Math.random() * p.w;
   }
-  enemies.push({
+  let e = {
     x, y, ...def, type,
     health: Math.ceil(def.health * scale),
     maxHealth: Math.ceil(def.health * scale),
@@ -1251,13 +1407,26 @@ function spawnEnemy(type) {
     deathTimer: 0,
     alive: true,
     patrolDir: fromRight ? -1 : 1,
-  });
+  };
+  if (def.flying) {
+    e.flyBaseY = y;
+    e.flyPhase = Math.random() * Math.PI * 2;
+  }
+  if (def.burstCount) {
+    e.burstRemaining = 0;
+    e.burstDelay = 0;
+  }
+  if (def.mega) {
+    e._jumpTimer = 120;
+    e._shockwaveCooldown = 0;
+  }
+  enemies.push(e);
 }
 
 function spawnPowerup() {
-  let types = ['health', 'shotgun', 'smg', 'rifle', 'slowmo'];
+  let types = ['health', 'shotgun', 'smg', 'rifle', 'slowmo', 'grenade'];
   let type = types[Math.floor(Math.random() * types.length)];
-  let colors = { health: '#ff6b6b', shotgun: '#ff6b6b', smg: '#4ecdc4', rifle: '#ff9f43', slowmo: '#c77dff' };
+  let colors = { health: '#ff6b6b', shotgun: '#ff6b6b', smg: '#4ecdc4', rifle: '#ff9f43', slowmo: '#c77dff', grenade: '#ff9800' };
   powerups.push({
     x: 100 + Math.random() * (canvas.width - 200),
     y: GROUND - 200 - Math.random() * 100,
@@ -1356,6 +1525,7 @@ function playerShoot(p) {
       isPlayer: true,
       life: 80,
       trail: [],
+      explosive: !!wep.explosive,
     });
   }
 
@@ -1369,6 +1539,106 @@ function playerShoot(p) {
   spawnMuzzleFlash(p.x + p.facing * 24, p.y + 14, p.facing);
   spawnCasing(p.x, p.y + 10, p.facing);
   screenShake = Math.max(screenShake, wep.fireRate > 15 ? 4 : 2);
+}
+
+function throwGrenade(p) {
+  if (!p || !p.alive || p.grenadeCount <= 0 || p.grenadeCooldown > 0) return;
+  p.grenadeCount--;
+  p.grenadeCooldown = 90;
+  SFX.grenadeThrow();
+  grenades.push({
+    x: p.x + p.facing * 10,
+    y: p.y + 10,
+    vx: p.facing * 5,
+    vy: -7,
+    fuse: 90,
+    bounced: false,
+    rotation: 0,
+    owner: p,
+  });
+}
+
+function rpgExplode(x, y) {
+  let wep = weapons.rpg;
+  SFX.grenadeExplode();
+  spawnExplosion(x, y, '#ff5252', 30);
+  screenShake = 12;
+  // Area damage to enemies
+  enemies.forEach(e => {
+    if (!e.alive || e.dying) return;
+    let dx = e.x - x;
+    let dy = (e.y + e.h / 2) - y;
+    let dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < wep.blastRadius) {
+      let falloff = 1 - (dist / wep.blastRadius);
+      let dmg = Math.ceil(wep.damage * falloff);
+      e.health -= dmg;
+      e.hit = 6;
+      spawnBlood(e.x, e.y + e.h / 2);
+      if (e.health <= 0 && !e.dying) {
+        e.dying = true;
+        e.deathTimer = 45;
+        e.deathVx = (dx / (dist || 1)) * 4;
+        e.deathVy = -4 - Math.random() * 3;
+        e.deathRotation = 0;
+        e.deathRotSpeed = (Math.random() - 0.5) * 0.2;
+        score += e.score;
+        killStreak++;
+        killStreakTimer = 120;
+        if (killStreak >= 3) {
+          let mult = Math.min(killStreak, 10);
+          let bonus = e.score * (mult - 1);
+          score += bonus;
+          addFloatingText(`${killStreak}x COMBO! +${bonus}`, e.x, e.y - 20, '#ffe66d', 20, 60);
+        }
+        SFX.enemyDeath();
+        spawnExplosion(e.x, e.y + e.h / 2, e.color);
+        addFloatingText(`+${e.score}`, e.x, e.y, '#fff', 14, 40);
+      }
+    }
+  });
+}
+
+function grenadeExplode(g) {
+  let blastRadius = 70;
+  let damage = 5;
+  SFX.grenadeExplode();
+  spawnExplosion(g.x, g.y, '#ff9800', 25);
+  screenShake = 10;
+  // Damage enemies
+  enemies.forEach(e => {
+    if (!e.alive || e.dying) return;
+    let dx = e.x - g.x;
+    let dy = (e.y + e.h / 2) - g.y;
+    let dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < blastRadius) {
+      let falloff = 1 - (dist / blastRadius);
+      let dmg = Math.ceil(damage * falloff);
+      e.health -= dmg;
+      e.hit = 6;
+      spawnBlood(e.x, e.y + e.h / 2);
+      if (e.health <= 0 && !e.dying) {
+        e.dying = true;
+        e.deathTimer = 45;
+        e.deathVx = (dx / (dist || 1)) * 4;
+        e.deathVy = -4 - Math.random() * 3;
+        e.deathRotation = 0;
+        e.deathRotSpeed = (Math.random() - 0.5) * 0.2;
+        score += e.score;
+        killStreak++;
+        killStreakTimer = 120;
+        if (killStreak >= 3) {
+          let mult = Math.min(killStreak, 10);
+          let bonus = e.score * (mult - 1);
+          score += bonus;
+          addFloatingText(`${killStreak}x COMBO! +${bonus}`, e.x, e.y - 20, '#ffe66d', 20, 60);
+        }
+        SFX.enemyDeath();
+        spawnExplosion(e.x, e.y + e.h / 2, e.color);
+        addFloatingText(`+${e.score}`, e.x, e.y, '#fff', 14, 40);
+      }
+    }
+  });
 }
 
 function enemyShoot(enemy) {
@@ -1576,6 +1846,8 @@ function processRemoteEvent(p, event) {
   } else if (event === 'reload' && !p.reloading && p.ammo < p.maxAmmo) {
     p.reloading = true;
     p.reloadTimer = 40;
+  } else if (event === 'grenade') {
+    throwGrenade(p);
   }
 }
 
@@ -1668,6 +1940,7 @@ function setupClientConnection() {
   powerups = [];
   floatingTexts = [];
   casings = [];
+  grenades = [];
   score = 0;
   level = 1;
   wave = 0;
@@ -1762,6 +2035,8 @@ function serializePlayer(p) {
     alive: p.alive,
     shootCooldown: p.shootCooldown,
     lastHitTimer: p.lastHitTimer,
+    grenadeCount: p.grenadeCount,
+    grenadeCooldown: p.grenadeCooldown,
   };
 }
 
@@ -1778,13 +2053,17 @@ function sendGameState() {
       deathVx: e.deathVx || 0, deathVy: e.deathVy || 0, deathRotation: e.deathRotation || 0,
       deathRotSpeed: e.deathRotSpeed || 0, vy: e.vy, hit: e.hit,
       speed: e.speed, boss: !!e.boss, bomber: !!e.bomber,
+      flying: !!e.flying, mega: !!e.mega, flyBaseY: e.flyBaseY || 0, flyPhase: e.flyPhase || 0,
     })),
     bullets: bullets.map(b => ({
       x: b.x, y: b.y, vx: b.vx, vy: b.vy, color: b.color, size: b.size,
-      isPlayer: b.isPlayer, life: b.life,
+      isPlayer: b.isPlayer, life: b.life, explosive: !!b.explosive,
     })),
     powerups: powerups.map(p => ({
       x: p.x, y: p.y, vy: p.vy, w: p.w, h: p.h, type: p.type, color: p.color, life: p.life,
+    })),
+    grenades: grenades.map(g => ({
+      x: g.x, y: g.y, vx: g.vx, vy: g.vy, fuse: g.fuse, bounced: g.bounced, rotation: g.rotation,
     })),
     state: state,
     score: score,
@@ -1823,6 +2102,8 @@ function applyPlayerState(p, data) {
   p.alive = data.alive;
   p.shootCooldown = data.shootCooldown;
   p.lastHitTimer = data.lastHitTimer;
+  if (data.grenadeCount !== undefined) p.grenadeCount = data.grenadeCount;
+  if (data.grenadeCooldown !== undefined) p.grenadeCooldown = data.grenadeCooldown;
 }
 
 function applyHostState(data) {
@@ -1845,6 +2126,7 @@ function applyHostState(data) {
 
   bullets = data.bullets.map(b => ({ ...b, trail: [], damage: 0 }));
   powerups = data.powerups;
+  if (data.grenades) grenades = data.grenades;
 
   state = data.state;
   score = data.score;
@@ -1925,9 +2207,11 @@ function clientUpdate() {
       if (e.deathTimer <= 0) e.alive = false;
       return;
     }
-    e.vy += GRAVITY * dt;
-    e.y += e.vy * dt;
-    if (e.y + e.h >= GROUND) { e.y = GROUND - e.h; e.vy = 0; }
+    if (!e.flying) {
+      e.vy += GRAVITY * dt;
+      e.y += e.vy * dt;
+      if (e.y + e.h >= GROUND) { e.y = GROUND - e.h; e.vy = 0; }
+    }
   });
 
   bullets.forEach(b => {
@@ -1939,6 +2223,17 @@ function clientUpdate() {
     b.life -= dt;
   });
   bullets = bullets.filter(b => b.life > 0 && b.x > -50 && b.x < canvas.width + 50);
+
+  // Grenade visual physics (client interpolation)
+  grenades.forEach(g => {
+    g.vy += GRAVITY * 0.6 * dt;
+    g.x += g.vx * dt;
+    g.y += g.vy * dt;
+    g.rotation += 0.15 * dt;
+    g.fuse -= dt;
+    if (g.y >= GROUND - 5) { g.y = GROUND - 5; g.vy = 0; g.vx *= 0.9; }
+  });
+  grenades = grenades.filter(g => g.fuse > 0);
 
   particles.forEach(p => {
     p.x += p.vx * dt;
@@ -2069,6 +2364,94 @@ function update() {
         score += e.score;
         return;
       }
+    } else if (e.flying) {
+      // Flying enemy AI (drones, gunships)
+      e.facing = toPlayer > 0 ? 1 : -1;
+      e.x += e.facing * e.speed * dt;
+      // Sinusoidal bobbing
+      e.flyPhase += 0.03 * dt;
+      e.y = e.flyBaseY + Math.sin(e.flyPhase) * 15;
+      // Keep in bounds vertically
+      if (e.y < 20) { e.y = 20; e.flyBaseY = 20; }
+      if (e.y + e.h > GROUND - 30) { e.flyBaseY -= 2; }
+      // Strafe: if close, back off; if far, close in
+      if (dist < 60) {
+        e.x -= e.facing * e.speed * 0.5 * dt;
+      }
+      // Gunship burst fire
+      if (e.burstCount) {
+        if (e.burstRemaining > 0) {
+          e.burstDelay -= dt;
+          if (e.burstDelay <= 0) {
+            enemyShoot(e);
+            e.burstRemaining--;
+            e.burstDelay = 8;
+          }
+        } else {
+          e.shootTimer -= dt;
+          if (e.shootTimer <= 0) {
+            e.shootTimer = e.shootRate + Math.random() * 20;
+            e.burstRemaining = e.burstCount;
+            e.burstDelay = 0;
+          }
+        }
+      } else {
+        // Drone single shot
+        e.shootTimer -= dt;
+        if (e.shootTimer <= 0 && e.shootRate > 0) {
+          e.shootTimer = e.shootRate + Math.random() * 20;
+          enemyShoot(e);
+        }
+      }
+    } else if (e.mega) {
+      // Megaboss AI - charges, rapid bursts, shockwave stomps
+      e.facing = toPlayer > 0 ? 1 : -1;
+      // Aggressive charge
+      if (dist > 100) {
+        e.x += e.facing * e.speed * 1.5 * dt;
+      } else if (dist < 50) {
+        e.x -= e.facing * e.speed * 0.3 * dt;
+      }
+      // Rapid 5-shot burst
+      e.shootTimer -= dt;
+      if (e.shootTimer <= 0) {
+        e.shootTimer = e.shootRate + Math.random() * 10;
+        for (let s = 0; s < 5; s++) {
+          setTimeout(() => {
+            if (!e.alive || state !== 'playing') return;
+            enemyShoot(e);
+            screenShake = 4;
+          }, s * 60);
+        }
+      }
+      // Frequent stomp jumps with shockwave
+      if (!e._jumpTimer) e._jumpTimer = 120;
+      e._jumpTimer -= dt;
+      if (e._jumpTimer <= 0 && e.y + e.h >= GROUND - 2) {
+        e.vy = -12;
+        e._jumpTimer = 120 + Math.random() * 80;
+        SFX.explosion();
+        spawnExplosion(e.x, e.y + e.h, '#ff1744', 15);
+        // Shockwave damage to nearby players
+        let livingPlayers = [player, player2].filter(p => p && p.alive);
+        livingPlayers.forEach(p => {
+          let sdist = Math.abs(e.x - p.x);
+          if (sdist < 100) {
+            if (p.shielding) {
+              SFX.shieldBlock();
+              screenShake = 5;
+            } else if (p.invincible <= 0) {
+              p.health -= 2;
+              p.lastHitTimer = 0;
+              p.vy = -6;
+              screenShake = 12;
+              spawnBlood(p.x, p.y + p.h / 2);
+              addFloatingText('SHOCKWAVE!', p.x, p.y - 20, '#ff1744', 16, 50);
+              checkPlayerDeath(p);
+            }
+          }
+        });
+      }
     } else if (e.boss) {
       // Boss AI - aggressive, multi-shot, stomps
       e.facing = toPlayer > 0 ? 1 : -1;
@@ -2118,24 +2501,26 @@ function update() {
       }
     }
 
-    // Gravity
-    e.vy += GRAVITY * dt;
-    e.y += e.vy * dt;
+    // Gravity and platform collision (skip for flying enemies)
+    if (!e.flying) {
+      e.vy += GRAVITY * dt;
+      e.y += e.vy * dt;
 
-    if (e.y + e.h >= GROUND) {
-      e.y = GROUND - e.h;
-      e.vy = 0;
-    }
-
-    // Platform collision for enemies
-    platforms.forEach(p => {
-      if (e.vy >= 0 &&
-          e.x + e.w / 2 > p.x && e.x - e.w / 2 < p.x + p.w &&
-          e.y + e.h >= p.y && e.y + e.h <= p.y + p.h + 8) {
-        e.y = p.y - e.h;
+      if (e.y + e.h >= GROUND) {
+        e.y = GROUND - e.h;
         e.vy = 0;
       }
-    });
+
+      // Platform collision for enemies
+      platforms.forEach(p => {
+        if (e.vy >= 0 &&
+            e.x + e.w / 2 > p.x && e.x - e.w / 2 < p.x + p.w &&
+            e.y + e.h >= p.y && e.y + e.h <= p.y + p.h + 8) {
+          e.y = p.y - e.h;
+          e.vy = 0;
+        }
+      });
+    }
 
     // Bounds
     e.x = Math.max(e.w / 2, Math.min(canvas.width - e.w / 2, e.x));
@@ -2150,14 +2535,25 @@ function update() {
     b.y += b.vy * dt;
     b.life -= dt;
 
+    // RPG ground contact explosion
+    if (b.isPlayer && b.explosive && b.y >= GROUND - 2) {
+      rpgExplode(b.x, GROUND);
+      b.life = 0;
+    }
+
     if (b.isPlayer) {
       // Hit enemies
       enemies.forEach(e => {
         if (!e.alive || e.dying) return;
         if (Math.abs(b.x - e.x) < e.w / 2 + b.size && Math.abs(b.y - (e.y + e.h / 2)) < e.h / 2 + b.size) {
+          b.life = 0;
+          // RPG: explode on impact for area damage
+          if (b.explosive) {
+            rpgExplode(b.x, b.y);
+            return;
+          }
           e.health -= b.damage;
           e.hit = 6;
-          b.life = 0;
           spawnBlood(b.x, b.y);
           SFX.enemyHit();
           screenShake = Math.max(screenShake, 2);
@@ -2251,6 +2647,9 @@ function update() {
         } else if (pu.type === 'slowmo') {
           slowMoTimer = 180;
           addFloatingText('SLOW-MO!', pu.x, pu.y - 10, '#c77dff', 18, 50);
+        } else if (pu.type === 'grenade') {
+          p.grenadeCount = Math.min(p.maxGrenades, p.grenadeCount + 3);
+          addFloatingText('+3 GRENADES!', pu.x, pu.y - 10, '#ff9800', 18, 50);
         } else {
           p.weapon = pu.type;
           p.ammo = weapons[pu.type].ammo;
@@ -2263,6 +2662,57 @@ function update() {
     }
   });
   powerups = powerups.filter(pu => pu.life > 0);
+
+  // ─── GRENADES ───
+  [player, player2].forEach(p => { if (p && p.grenadeCooldown > 0) p.grenadeCooldown -= dt; });
+  grenades.forEach(g => {
+    g.vy += GRAVITY * 0.6 * dt;
+    g.x += g.vx * dt;
+    g.y += g.vy * dt;
+    g.rotation += 0.15 * dt;
+    g.fuse -= dt;
+    // Bounce off ground
+    if (g.y >= GROUND - 5) {
+      g.y = GROUND - 5;
+      if (!g.bounced) {
+        g.bounced = true;
+        g.vy = -Math.abs(g.vy) * 0.4;
+        g.vx *= 0.6;
+        SFX.grenadeBounce();
+      } else {
+        g.vy = 0;
+        g.vx *= 0.9;
+      }
+    }
+    // Bounce off platforms
+    platforms.forEach(p => {
+      if (g.vy >= 0 && g.x > p.x && g.x < p.x + p.w &&
+          g.y >= p.y - 5 && g.y <= p.y + p.h) {
+        g.y = p.y - 5;
+        if (!g.bounced) {
+          g.bounced = true;
+          g.vy = -Math.abs(g.vy) * 0.4;
+          g.vx *= 0.6;
+          SFX.grenadeBounce();
+        } else {
+          g.vy = 0;
+          g.vx *= 0.9;
+        }
+      }
+    });
+    // Smoke trail particles
+    if (Math.random() > 0.5) {
+      particles.push({
+        x: g.x, y: g.y, vx: (Math.random() - 0.5) * 1, vy: -Math.random() * 1.5,
+        life: 12, maxLife: 12, color: '#888', size: 2 + Math.random() * 2
+      });
+    }
+    // Explode when fuse runs out
+    if (g.fuse <= 0) {
+      grenadeExplode(g);
+    }
+  });
+  grenades = grenades.filter(g => g.fuse > 0);
 
   // ─── PARTICLES ───
   particles.forEach(p => {
@@ -2481,6 +2931,216 @@ function drawBackdrop(type) {
       }
     });
     ctx.globalAlpha = 1;
+
+  } else if (type === 'skyline') {
+    // Glowing blue skyscrapers
+    let buildings = [
+      { x: 20, w: 50, h: 280 }, { x: 100, w: 40, h: 320 },
+      { x: 180, w: 65, h: 250 }, { x: 290, w: 45, h: 340 },
+      { x: 380, w: 70, h: 200 }, { x: 490, w: 55, h: 300 },
+      { x: 580, w: 60, h: 270 }, { x: 680, w: 50, h: 350 },
+      { x: 770, w: 65, h: 230 }, { x: 860, w: 40, h: 290 },
+    ];
+    buildings.forEach(b => {
+      let by = GROUND - b.h;
+      ctx.fillStyle = 'rgba(5,15,35,0.7)';
+      ctx.fillRect(b.x, by, b.w, b.h);
+      // Blue glowing windows
+      for (let wy = by + 12; wy < GROUND - 15; wy += 18) {
+        for (let wx = b.x + 6; wx < b.x + b.w - 6; wx += 12) {
+          let on = Math.sin(wx * 2.3 + wy * 1.7 + time * 0.5) > 0.1;
+          if (on) {
+            ctx.fillStyle = 'rgba(60,160,255,0.3)';
+            ctx.fillRect(wx, wy, 5, 7);
+          }
+        }
+      }
+      // Rooftop light
+      ctx.fillStyle = 'rgba(60,180,255,0.4)';
+      ctx.beginPath();
+      ctx.arc(b.x + b.w / 2, by - 2, 3, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+  } else if (type === 'airfield') {
+    // Runway with lights
+    ctx.fillStyle = 'rgba(30,30,30,0.4)';
+    ctx.fillRect(50, GROUND - 10, canvas.width - 100, 10);
+    // Runway center line
+    ctx.strokeStyle = 'rgba(200,200,200,0.3)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([20, 15]);
+    ctx.beginPath();
+    ctx.moveTo(80, GROUND - 5);
+    ctx.lineTo(canvas.width - 80, GROUND - 5);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // Runway lights
+    for (let lx = 60; lx < canvas.width - 50; lx += 50) {
+      let flicker = Math.sin(time * 3 + lx) > 0 ? 0.6 : 0.3;
+      ctx.fillStyle = `rgba(255,180,50,${flicker})`;
+      ctx.beginPath();
+      ctx.arc(lx, GROUND - 2, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Hangars
+    ctx.fillStyle = 'rgba(20,20,25,0.5)';
+    ctx.beginPath();
+    ctx.moveTo(80, GROUND - 100);
+    ctx.quadraticCurveTo(140, GROUND - 140, 200, GROUND - 100);
+    ctx.lineTo(200, GROUND);
+    ctx.lineTo(80, GROUND);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(650, GROUND - 90);
+    ctx.quadraticCurveTo(710, GROUND - 130, 770, GROUND - 90);
+    ctx.lineTo(770, GROUND);
+    ctx.lineTo(650, GROUND);
+    ctx.closePath();
+    ctx.fill();
+    // Control tower
+    ctx.fillStyle = 'rgba(25,25,30,0.5)';
+    ctx.fillRect(430, GROUND - 180, 30, 180);
+    ctx.fillRect(415, GROUND - 200, 60, 25);
+    // Tower windows
+    ctx.fillStyle = 'rgba(100,200,100,0.3)';
+    ctx.fillRect(420, GROUND - 195, 50, 10);
+
+  } else if (type === 'underground') {
+    // Stalactites
+    let stalactites = [50, 130, 240, 360, 480, 560, 670, 780, 850];
+    stalactites.forEach(sx => {
+      let sh = 30 + (sx * 7) % 50;
+      ctx.fillStyle = 'rgba(60,45,30,0.5)';
+      ctx.beginPath();
+      ctx.moveTo(sx - 8, 0);
+      ctx.lineTo(sx + 8, 0);
+      ctx.lineTo(sx + 2, sh);
+      ctx.lineTo(sx - 2, sh + 6);
+      ctx.closePath();
+      ctx.fill();
+    });
+    // Dim lanterns
+    let lanterns = [150, 400, 700];
+    lanterns.forEach(lx => {
+      let ly = 60 + Math.sin(lx) * 20;
+      // Rope
+      ctx.strokeStyle = 'rgba(100,80,50,0.3)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(lx, 0);
+      ctx.lineTo(lx, ly);
+      ctx.stroke();
+      // Glow
+      let glowPulse = 0.2 + Math.sin(time * 2 + lx) * 0.1;
+      ctx.globalAlpha = glowPulse;
+      ctx.fillStyle = '#ff9940';
+      ctx.beginPath();
+      ctx.arc(lx, ly + 5, 20, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      // Lantern body
+      ctx.fillStyle = '#8a6a30';
+      ctx.fillRect(lx - 4, ly, 8, 10);
+      ctx.fillStyle = '#ffaa40';
+      ctx.fillRect(lx - 2, ly + 2, 4, 6);
+    });
+    // Rock texture on walls
+    ctx.fillStyle = 'rgba(40,30,20,0.3)';
+    for (let rx = 0; rx < canvas.width; rx += 60) {
+      let rh = 20 + (rx * 3) % 30;
+      ctx.beginPath();
+      ctx.moveTo(rx, GROUND);
+      ctx.quadraticCurveTo(rx + 30, GROUND - rh, rx + 60, GROUND);
+      ctx.fill();
+    }
+
+  } else if (type === 'skyfortress') {
+    // Clouds below
+    ctx.globalAlpha = 0.15;
+    ctx.fillStyle = '#9a7aff';
+    for (let cx = -20; cx < canvas.width + 20; cx += 80) {
+      let cy = GROUND + 10 + Math.sin(cx * 0.02 + time) * 8;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 30, 0, Math.PI * 2);
+      ctx.arc(cx + 25, cy - 5, 20, 0, Math.PI * 2);
+      ctx.arc(cx - 20, cy + 3, 22, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    // Fortress walls
+    ctx.fillStyle = 'rgba(30,15,50,0.5)';
+    ctx.fillRect(0, GROUND - 200, 40, 200);
+    ctx.fillRect(canvas.width - 40, GROUND - 200, 40, 200);
+    // Battlements
+    for (let bx = 0; bx < 40; bx += 14) {
+      ctx.fillRect(bx, GROUND - 215, 10, 20);
+      ctx.fillRect(canvas.width - 40 + bx, GROUND - 215, 10, 20);
+    }
+    // Purple accent lights
+    let accents = [20, canvas.width - 20, canvas.width / 2];
+    accents.forEach(ax => {
+      ctx.globalAlpha = 0.3 + Math.sin(time * 2 + ax) * 0.15;
+      ctx.fillStyle = '#9a6aff';
+      ctx.beginPath();
+      ctx.arc(ax, GROUND - 180, 4, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+    // Floating stone platforms in background
+    ctx.fillStyle = 'rgba(40,20,60,0.3)';
+    [[200, 80], [450, 60], [700, 90]].forEach(([fx, fy]) => {
+      ctx.fillRect(fx - 25, fy, 50, 8);
+    });
+
+  } else if (type === 'omega') {
+    // Broken structures
+    ctx.fillStyle = 'rgba(50,15,5,0.5)';
+    ctx.beginPath();
+    ctx.moveTo(60, GROUND);
+    ctx.lineTo(60, GROUND - 180);
+    ctx.lineTo(80, GROUND - 200);
+    ctx.lineTo(100, GROUND - 160);
+    ctx.lineTo(130, GROUND);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(700, GROUND);
+    ctx.lineTo(700, GROUND - 210);
+    ctx.lineTo(730, GROUND - 170);
+    ctx.lineTo(760, GROUND - 220);
+    ctx.lineTo(790, GROUND);
+    ctx.closePath();
+    ctx.fill();
+    // Lava cracks on ground
+    ctx.strokeStyle = 'rgba(255,80,20,0.4)';
+    ctx.lineWidth = 2;
+    let cracks = [[100, 300], [350, 500], [600, 750]];
+    cracks.forEach(([cx1, cx2]) => {
+      ctx.beginPath();
+      ctx.moveTo(cx1, GROUND + 5);
+      for (let cx = cx1; cx < cx2; cx += 20) {
+        ctx.lineTo(cx + Math.random() * 10, GROUND + 3 + Math.random() * 15);
+      }
+      ctx.stroke();
+    });
+    // Lava glow
+    ctx.globalAlpha = 0.15 + Math.sin(time * 3) * 0.08;
+    ctx.fillStyle = '#ff4400';
+    cracks.forEach(([cx1, cx2]) => {
+      ctx.fillRect(cx1, GROUND + 2, cx2 - cx1, 8);
+    });
+    ctx.globalAlpha = 1;
+    // Fire particles
+    for (let i = 0; i < 3; i++) {
+      let fx = (200 + i * 250 + Math.sin(time * 2 + i * 3) * 30);
+      let fy = GROUND - 5 - Math.abs(Math.sin(time * 4 + i * 2)) * 20;
+      ctx.fillStyle = `rgba(255,${80 + Math.floor(Math.random() * 80)},0,0.4)`;
+      ctx.beginPath();
+      ctx.arc(fx, fy, 4 + Math.random() * 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 }
 
@@ -2780,20 +3440,82 @@ function draw() {
     b.trail.forEach((t, i) => {
       let alpha = (i / b.trail.length) * 0.4;
       ctx.globalAlpha = alpha;
-      ctx.fillStyle = b.color;
+      ctx.fillStyle = b.explosive ? '#ff8a50' : b.color;
       ctx.beginPath();
-      ctx.arc(t.x, t.y, b.size * 0.6, 0, Math.PI * 2);
+      ctx.arc(t.x, t.y, b.size * (b.explosive ? 0.8 : 0.6), 0, Math.PI * 2);
       ctx.fill();
     });
     ctx.globalAlpha = 1;
-    // Bullet glow
-    ctx.shadowColor = b.color;
-    ctx.shadowBlur = 8;
-    ctx.fillStyle = b.color;
+    if (b.explosive) {
+      // RPG rocket rendering
+      ctx.save();
+      ctx.translate(b.x, b.y);
+      ctx.rotate(Math.atan2(b.vy, b.vx));
+      // Rocket body
+      ctx.fillStyle = '#888';
+      ctx.fillRect(-8, -3, 16, 6);
+      // Warhead
+      ctx.fillStyle = '#ff5252';
+      ctx.beginPath();
+      ctx.moveTo(8, -3);
+      ctx.lineTo(12, 0);
+      ctx.lineTo(8, 3);
+      ctx.closePath();
+      ctx.fill();
+      // Fins
+      ctx.fillStyle = '#666';
+      ctx.fillRect(-8, -5, 4, 2);
+      ctx.fillRect(-8, 3, 4, 2);
+      // Exhaust glow
+      ctx.shadowColor = '#ff8a00';
+      ctx.shadowBlur = 10;
+      ctx.fillStyle = '#ffaa00';
+      ctx.beginPath();
+      ctx.arc(-10, 0, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    } else {
+      // Normal bullet glow
+      ctx.shadowColor = b.color;
+      ctx.shadowBlur = 8;
+      ctx.fillStyle = b.color;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.size, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+  });
+
+  // Grenades
+  grenades.forEach(g => {
+    ctx.save();
+    ctx.translate(g.x, g.y);
+    ctx.rotate(g.rotation);
+    // Body
+    ctx.fillStyle = '#4a6a20';
     ctx.beginPath();
-    ctx.arc(b.x, b.y, b.size, 0, Math.PI * 2);
+    ctx.arc(0, 0, 5, 0, Math.PI * 2);
     ctx.fill();
-    ctx.shadowBlur = 0;
+    // Top cap
+    ctx.fillStyle = '#333';
+    ctx.fillRect(-2, -7, 4, 3);
+    ctx.restore();
+    // Blinking warning glow when fuse < 30
+    if (g.fuse < 30) {
+      let blink = Math.sin(Date.now() * 0.02) > 0;
+      if (blink) {
+        ctx.globalAlpha = 0.5;
+        ctx.shadowColor = '#ff4400';
+        ctx.shadowBlur = 15;
+        ctx.fillStyle = '#ff4400';
+        ctx.beginPath();
+        ctx.arc(g.x, g.y, 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 1;
+      }
+    }
   });
 
   // Powerups
@@ -2808,7 +3530,7 @@ function draw() {
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 12px monospace';
     ctx.textAlign = 'center';
-    let icon = p.type === 'health' ? '+' : p.type === 'slowmo' ? 'S' : p.type[0].toUpperCase();
+    let icon = p.type === 'health' ? '+' : p.type === 'slowmo' ? 'S' : p.type === 'grenade' ? 'G' : p.type[0].toUpperCase();
     ctx.fillText(icon, p.x, p.y + 4 + bob);
   });
 
@@ -2993,6 +3715,197 @@ function draw() {
       ctx.font = 'bold 8px monospace';
       ctx.textAlign = 'center';
       ctx.fillText('BOSS', 0, -21);
+
+    } else if (e.mega) {
+      // ── MEGABOSS RENDERING ──
+      let megaTime = Date.now() * 0.003;
+
+      // Pulsing aura (larger)
+      let auraPulse = 0.2 + Math.sin(megaTime) * 0.12;
+      ctx.globalAlpha = auraPulse;
+      ctx.shadowColor = '#ff1744';
+      ctx.shadowBlur = 40;
+      ctx.fillStyle = '#ff1744';
+      ctx.beginPath();
+      ctx.arc(0, e.h * 0.4, e.w * 1.1, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = 1;
+
+      // Wings
+      ctx.fillStyle = 'rgba(255,23,68,0.3)';
+      let wingFlap = Math.sin(megaTime * 2) * 5;
+      // Left wing
+      ctx.beginPath();
+      ctx.moveTo(-e.w * 0.4, e.h * 0.3);
+      ctx.lineTo(-e.w * 0.9, e.h * 0.1 + wingFlap);
+      ctx.lineTo(-e.w * 0.7, e.h * 0.5);
+      ctx.closePath();
+      ctx.fill();
+      // Right wing
+      ctx.beginPath();
+      ctx.moveTo(e.w * 0.4, e.h * 0.3);
+      ctx.lineTo(e.w * 0.9, e.h * 0.1 + wingFlap);
+      ctx.lineTo(e.w * 0.7, e.h * 0.5);
+      ctx.closePath();
+      ctx.fill();
+
+      // Legs (thick)
+      let eLegBottom = e.h - 3;
+      ctx.lineWidth = 7;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = '#222';
+      ctx.beginPath();
+      ctx.moveTo(-8, e.h * 0.62);
+      ctx.lineTo(-10 - eWalk, eLegBottom);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(8, e.h * 0.62);
+      ctx.lineTo(10 + eWalk, eLegBottom);
+      ctx.stroke();
+      // Heavy boots
+      ctx.fillStyle = '#333';
+      ctx.beginPath(); ctx.ellipse(-10 - eWalk, eLegBottom, 7, 5, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(10 + eWalk, eLegBottom, 7, 5, 0, 0, Math.PI * 2); ctx.fill();
+
+      // Torso
+      ctx.fillStyle = eColor;
+      let tw = e.w * 0.9;
+      ctx.beginPath();
+      ctx.moveTo(-tw / 2, e.h * 0.22);
+      ctx.lineTo(-tw / 2 - 4, e.h * 0.62);
+      ctx.lineTo(tw / 2 + 4, e.h * 0.62);
+      ctx.lineTo(tw / 2, e.h * 0.22);
+      ctx.closePath();
+      ctx.fill();
+
+      // Arms + Big gun
+      ctx.strokeStyle = eSkin;
+      ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.moveTo(-e.facing * 10, e.h * 0.3); ctx.lineTo(-e.facing * 16, e.h * 0.5); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(e.facing * 10, e.h * 0.3); ctx.lineTo(e.facing * 18, e.h * 0.36); ctx.stroke();
+      ctx.fillStyle = '#555';
+      ctx.fillRect(e.facing * 18, e.h * 0.33 - 4, e.facing * 22, 7);
+      ctx.fillStyle = '#ff1744';
+      ctx.fillRect(e.facing * 18, e.h * 0.33 - 5, e.facing * 4, 9);
+
+      // Head
+      ctx.fillStyle = eSkin;
+      let headR = e.w * 0.36;
+      ctx.beginPath(); ctx.arc(0, e.h * 0.14, headR, 0, Math.PI * 2); ctx.fill();
+
+      // Crown/Horns (larger)
+      ctx.fillStyle = '#cc0000';
+      ctx.beginPath(); ctx.moveTo(-headR + 2, e.h * 0.08); ctx.lineTo(-headR - 6, e.h * 0.14 - headR - 18); ctx.lineTo(-headR + 10, e.h * 0.04); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(headR - 2, e.h * 0.08); ctx.lineTo(headR + 6, e.h * 0.14 - headR - 18); ctx.lineTo(headR - 10, e.h * 0.04); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(-5, e.h * 0.03); ctx.lineTo(0, e.h * 0.14 - headR - 14); ctx.lineTo(5, e.h * 0.03); ctx.closePath(); ctx.fill();
+
+      // Glowing eyes
+      let eyeGlow = 0.8 + Math.sin(megaTime * 3) * 0.2;
+      ctx.shadowColor = '#ff1744';
+      ctx.shadowBlur = 15;
+      ctx.fillStyle = `rgba(255,23,68,${eyeGlow})`;
+      ctx.beginPath(); ctx.ellipse(-6, e.h * 0.13, 4, 3, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(6, e.h * 0.13, 4, 3, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Large health bar
+      let hbW = 80;
+      let hbH = 8;
+      ctx.fillStyle = '#333';
+      ctx.fillRect(-hbW / 2, -22, hbW, hbH);
+      let hpRatio = e.health / e.maxHealth;
+      ctx.fillStyle = hpRatio > 0.5 ? '#ff1744' : hpRatio > 0.25 ? '#ff6600' : '#ff0000';
+      ctx.fillRect(-hbW / 2, -22, hbW * hpRatio, hbH);
+      ctx.strokeStyle = '#aa0000';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(-hbW / 2, -22, hbW, hbH);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 9px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('MEGA BOSS', 0, -25);
+
+    } else if (e.type === 'drone') {
+      // ── DRONE RENDERING ──
+      let droneTime = Date.now() * 0.01;
+      // Body circle
+      ctx.fillStyle = eColor;
+      ctx.beginPath();
+      ctx.arc(0, e.h / 2, e.w * 0.45, 0, Math.PI * 2);
+      ctx.fill();
+      // Spinning rotors
+      let rotorAngle = droneTime * 3;
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+      ctx.lineWidth = 2;
+      for (let r = 0; r < 4; r++) {
+        let ra = rotorAngle + r * Math.PI / 2;
+        ctx.beginPath();
+        ctx.moveTo(0, e.h / 2 - e.w * 0.35);
+        ctx.lineTo(Math.cos(ra) * e.w * 0.5, e.h / 2 - e.w * 0.35 + Math.sin(ra) * 3);
+        ctx.stroke();
+      }
+      // Sensor eye
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(e.facing * 3, e.h / 2, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#000';
+      ctx.beginPath();
+      ctx.arc(e.facing * 4, e.h / 2, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+      // Gun
+      ctx.fillStyle = '#666';
+      ctx.fillRect(e.facing * 6, e.h / 2 + 2, e.facing * 8, 2);
+      // Health bar
+      if (e.health < e.maxHealth) {
+        ctx.fillStyle = '#333';
+        ctx.fillRect(-e.w / 2, -6, e.w, 3);
+        ctx.fillStyle = e.color;
+        ctx.fillRect(-e.w / 2, -6, e.w * (e.health / e.maxHealth), 3);
+      }
+
+    } else if (e.type === 'gunship') {
+      // ── GUNSHIP RENDERING ──
+      let gsTime = Date.now() * 0.008;
+      // Elongated body
+      ctx.fillStyle = eColor;
+      ctx.beginPath();
+      ctx.ellipse(0, e.h / 2, e.w * 0.48, e.h * 0.35, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Cockpit
+      ctx.fillStyle = 'rgba(200,200,255,0.4)';
+      ctx.beginPath();
+      ctx.ellipse(e.facing * e.w * 0.2, e.h * 0.35, 6, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Twin rotors
+      let rotorAngle = gsTime * 4;
+      ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+      ctx.lineWidth = 2;
+      [-1, 1].forEach(side => {
+        let rx = side * e.w * 0.35;
+        let ry = e.h * 0.25;
+        for (let r = 0; r < 3; r++) {
+          let ra = rotorAngle + r * Math.PI * 2 / 3;
+          ctx.beginPath();
+          ctx.moveTo(rx, ry);
+          ctx.lineTo(rx + Math.cos(ra) * 12, ry + Math.sin(ra) * 3);
+          ctx.stroke();
+        }
+      });
+      // Twin guns
+      ctx.fillStyle = '#555';
+      ctx.fillRect(e.facing * 8, e.h * 0.55, e.facing * 14, 3);
+      ctx.fillRect(e.facing * 8, e.h * 0.65, e.facing * 14, 3);
+      // Health bar
+      let hbW2 = 44;
+      ctx.fillStyle = '#333';
+      ctx.fillRect(-hbW2 / 2, -10, hbW2, 5);
+      let hpR2 = e.health / e.maxHealth;
+      ctx.fillStyle = hpR2 > 0.5 ? e.color : '#ff6600';
+      ctx.fillRect(-hbW2 / 2, -10, hbW2 * hpR2, 5);
+      ctx.strokeStyle = '#555';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(-hbW2 / 2, -10, hbW2, 5);
 
     } else {
       // ── NORMAL ENEMY RENDERING ──
@@ -3183,12 +4096,18 @@ function draw() {
   let ammoText = player.reloading ? `[RELOADING...]` : `${weapons[player.weapon].name}: ${player.ammo}/${player.maxAmmo}`;
   ctx.fillText(ammoText, 20, 55);
 
+  // P1 Grenade count
+  ctx.font = 'bold 12px monospace';
+  ctx.fillStyle = player.grenadeCount > 0 ? '#ff9800' : '#555';
+  ctx.textAlign = 'left';
+  ctx.fillText(`G: ${player.grenadeCount}`, 20, 70);
+
   // P1 dead indicator
   if (coopMode && !player.alive) {
     ctx.fillStyle = 'rgba(233,69,96,0.7)';
     ctx.font = 'bold 12px monospace';
     ctx.textAlign = 'left';
-    ctx.fillText('DEAD', 20, 70);
+    ctx.fillText('DEAD', 20, 84);
   }
 
   // P2 HUD (co-op only)
@@ -3226,12 +4145,17 @@ function draw() {
     ctx.fillStyle = player2.reloading ? '#f39c12' : '#fff';
     let p2AmmoText = player2.reloading ? `[RELOADING...]` : `${weapons[player2.weapon].name}: ${player2.ammo}/${player2.maxAmmo}`;
     ctx.fillText(p2AmmoText, canvas.width - 20, 55);
+    // P2 Grenade count
+    ctx.font = 'bold 12px monospace';
+    ctx.fillStyle = player2.grenadeCount > 0 ? '#ff9800' : '#555';
+    ctx.textAlign = 'right';
+    ctx.fillText(`G: ${player2.grenadeCount}`, canvas.width - 20, 70);
     // P2 dead indicator
     if (!player2.alive) {
       ctx.fillStyle = 'rgba(233,69,96,0.7)';
       ctx.font = 'bold 12px monospace';
       ctx.textAlign = 'right';
-      ctx.fillText('DEAD', canvas.width - 20, 70);
+      ctx.fillText('DEAD', canvas.width - 20, 84);
     }
   }
 
@@ -3335,6 +4259,7 @@ function draw() {
         ['F / J / Z', 'Shoot'],
         ['E', 'Shield (blocks damage)'],
         ['R', 'Reload'],
+        ['G', 'Grenade'],
         ['M', 'Mute / Unmute'],
       ];
       lines.forEach(([key, action]) => {
@@ -3363,6 +4288,7 @@ function draw() {
         ['F', 'Shoot'],
         ['E', 'Shield'],
         ['R', 'Reload'],
+        ['G', 'Grenade'],
       ];
       const p2Lines = [
         ['< / >', 'Move'],
@@ -3371,6 +4297,7 @@ function draw() {
         ['/', 'Shoot'],
         ['.', 'Shield'],
         [';', 'Reload'],
+        [',', 'Grenade'],
       ];
       for (let i = 0; i < p1Lines.length; i++) {
         ctx.fillStyle = '#4ecdc4';
@@ -3406,6 +4333,7 @@ function draw() {
         ['F', 'Shoot'],
         ['E', 'Shield (blocks damage)'],
         ['R', 'Reload'],
+        ['G', 'Grenade'],
       ];
       onlineLines.forEach(([key, action]) => {
         ctx.fillStyle = '#4ecdc4';
@@ -3560,7 +4488,7 @@ function draw() {
 
     ctx.fillStyle = '#aaa';
     ctx.font = '16px monospace';
-    ctx.fillText('You have conquered all 5 levels.', canvas.width / 2, 330);
+    ctx.fillText('You have conquered all 10 levels.', canvas.width / 2, 330);
 
     if (onlineMode && isClient) {
       ctx.fillStyle = '#888';
