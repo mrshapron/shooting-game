@@ -2174,21 +2174,28 @@ function drawPlayer(p) {
     ctx.globalAlpha = 1;
   }
 
+  // Health bar
+  let hpRatio = p.health / p.maxHealth;
+  ctx.fillStyle = 'rgba(50,50,50,0.5)';
+  ctx.fillRect(-p.w / 2, p.h + 4, p.w, 4);
+  ctx.fillStyle = hpRatio > 0.5 ? '#2ecc71' : hpRatio > 0.25 ? '#f39c12' : '#e74c3c';
+  ctx.fillRect(-p.w / 2, p.h + 4, p.w * hpRatio, 4);
+
   // Dash indicator
   if (p.dashCooldown > 0) {
     ctx.fillStyle = `rgba(${p.dashColor === '#f39c12' ? '243,156,18' : '78,205,196'},0.3)`;
-    ctx.fillRect(-p.w / 2, p.h + 6, p.w * (1 - p.dashCooldown / 40), 3);
+    ctx.fillRect(-p.w / 2, p.h + 10, p.w * (1 - p.dashCooldown / 40), 3);
   } else {
     ctx.fillStyle = p.dashColor;
-    ctx.fillRect(-p.w / 2, p.h + 6, p.w, 3);
+    ctx.fillRect(-p.w / 2, p.h + 10, p.w, 3);
   }
 
   // Shield energy bar
   let shieldRatio = p.shieldEnergy / p.maxShieldEnergy;
   ctx.fillStyle = 'rgba(50,50,80,0.5)';
-  ctx.fillRect(-p.w / 2, p.h + 11, p.w, 3);
+  ctx.fillRect(-p.w / 2, p.h + 15, p.w, 3);
   ctx.fillStyle = shieldRatio > 0.3 ? '#66bbff' : '#ff6666';
-  ctx.fillRect(-p.w / 2, p.h + 11, p.w * shieldRatio, 3);
+  ctx.fillRect(-p.w / 2, p.h + 15, p.w * shieldRatio, 3);
 
   ctx.restore();
   ctx.globalAlpha = 1;
