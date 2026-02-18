@@ -259,38 +259,29 @@ const SFX = {
   reload() {
     if (!audioCtx || muted) return;
     const t = audioCtx.currentTime;
-    // Magazine click out
-    const click1 = audioCtx.createBufferSource();
-    click1.buffer = noiseBuffer;
-    const c1f = audioCtx.createBiquadFilter();
-    c1f.type = 'bandpass'; c1f.frequency.value = 4000; c1f.Q.value = 5;
-    const c1g = audioCtx.createGain();
-    c1g.gain.setValueAtTime(0.06, t);
-    c1g.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
-    click1.connect(c1f); c1f.connect(c1g); c1g.connect(audioCtx.destination);
-    click1.start(t); click1.stop(t + 0.04);
-    // Magazine slide in
-    const slide = audioCtx.createBufferSource();
-    slide.buffer = noiseBuffer;
-    const sf = audioCtx.createBiquadFilter();
-    sf.type = 'bandpass'; sf.frequency.value = 2500; sf.Q.value = 2;
-    const sg = audioCtx.createGain();
-    sg.gain.setValueAtTime(0, t + 0.06);
-    sg.gain.linearRampToValueAtTime(0.05, t + 0.08);
-    sg.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
-    slide.connect(sf); sf.connect(sg); sg.connect(audioCtx.destination);
-    slide.start(t); slide.stop(t + 0.14);
-    // Snap click
-    const click2 = audioCtx.createBufferSource();
-    click2.buffer = noiseBuffer;
-    const c2f = audioCtx.createBiquadFilter();
-    c2f.type = 'bandpass'; c2f.frequency.value = 5000; c2f.Q.value = 6;
-    const c2g = audioCtx.createGain();
-    c2g.gain.setValueAtTime(0, t + 0.12);
-    c2g.gain.linearRampToValueAtTime(0.07, t + 0.13);
-    c2g.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
-    click2.connect(c2f); c2f.connect(c2g); c2g.connect(audioCtx.destination);
-    click2.start(t); click2.stop(t + 0.16);
+    // Soft mechanical whir
+    const whir = audioCtx.createOscillator();
+    const wg = audioCtx.createGain();
+    whir.type = 'sine';
+    whir.frequency.setValueAtTime(120, t);
+    whir.frequency.linearRampToValueAtTime(180, t + 0.1);
+    whir.frequency.linearRampToValueAtTime(120, t + 0.2);
+    wg.gain.setValueAtTime(0.03, t);
+    wg.gain.linearRampToValueAtTime(0.02, t + 0.15);
+    wg.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+    whir.connect(wg); wg.connect(audioCtx.destination);
+    whir.start(t); whir.stop(t + 0.22);
+    // Quiet click at the end
+    const click = audioCtx.createBufferSource();
+    click.buffer = noiseBuffer;
+    const cf = audioCtx.createBiquadFilter();
+    cf.type = 'bandpass'; cf.frequency.value = 3000; cf.Q.value = 2;
+    const cg = audioCtx.createGain();
+    cg.gain.setValueAtTime(0, t + 0.18);
+    cg.gain.linearRampToValueAtTime(0.03, t + 0.19);
+    cg.gain.exponentialRampToValueAtTime(0.001, t + 0.23);
+    click.connect(cf); cf.connect(cg); cg.connect(audioCtx.destination);
+    click.start(t); click.stop(t + 0.23);
   },
   waveStart() {
     if (!audioCtx || muted) return;
