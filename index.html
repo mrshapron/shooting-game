@@ -235,6 +235,242 @@ const SFX = {
   },
 };
 
+// ─── PROCEDURAL BACKGROUND MUSIC ───
+let musicGain = null;
+let musicPlaying = false;
+let musicState = '';
+let musicNodes = [];
+let musicInterval = null;
+let musicStep = 0;
+
+function stopMusic() {
+  musicNodes.forEach(n => { try { n.stop(); } catch(e) {} try { n.disconnect(); } catch(e) {} });
+  musicNodes = [];
+  if (musicInterval) { clearInterval(musicInterval); musicInterval = null; }
+  musicPlaying = false;
+  musicState = '';
+}
+
+function startMusic(type) {
+  if (!audioCtx || musicState === type) return;
+  stopMusic();
+  musicState = type;
+  musicPlaying = true;
+
+  if (!musicGain) {
+    musicGain = audioCtx.createGain();
+    musicGain.connect(audioCtx.destination);
+  }
+  musicGain.gain.setValueAtTime(0.07, audioCtx.currentTime);
+
+  musicStep = 0;
+
+  if (type === 'menu') {
+    // Ambient pad with slow arpeggio
+    const padFreqs = [110, 164.81, 220];
+    padFreqs.forEach(freq => {
+      const osc = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      const filter = audioCtx.createBiquadFilter();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      filter.type = 'lowpass';
+      filter.frequency.value = 400;
+      g.gain.value = 0.3;
+      osc.connect(filter);
+      filter.connect(g);
+      g.connect(musicGain);
+      osc.start();
+      musicNodes.push(osc);
+    });
+
+    const arpNotes = [329.63, 392, 440, 523.25, 440, 392, 329.63, 261.63];
+    musicInterval = setInterval(() => {
+      if (muted || !musicPlaying) return;
+      const note = arpNotes[musicStep % arpNotes.length];
+      const osc = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.value = note;
+      g.gain.setValueAtTime(0.12, audioCtx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+      osc.connect(g);
+      g.connect(musicGain);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.5);
+      musicStep++;
+    }, 400);
+
+  } else if (type === 'action') {
+    // Driving bass line + rhythm
+    const bassLine = [82.41, 82.41, 110, 98, 82.41, 82.41, 73.42, 82.41,
+                      82.41, 82.41, 110, 98, 130.81, 110, 98, 82.41];
+    const hihat = () => {
+      if (muted) return;
+      const src = audioCtx.createBufferSource();
+      src.buffer = noiseBuffer;
+      const f = audioCtx.createBiquadFilter();
+      f.type = 'highpass';
+      f.frequency.value = 8000;
+      const g = audioCtx.createGain();
+      g.gain.setValueAtTime(0.04, audioCtx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.06);
+      src.connect(f);
+      f.connect(g);
+      g.connect(musicGain);
+      src.start();
+      src.stop(audioCtx.currentTime + 0.06);
+    };
+
+    musicInterval = setInterval(() => {
+      if (muted || !musicPlaying) return;
+      const note = bassLine[musicStep % bassLine.length];
+      // Bass note
+      const osc = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.value = note;
+      const f = audioCtx.createBiquadFilter();
+      f.type = 'lowpass';
+      f.frequency.value = 300;
+      g.gain.setValueAtTime(0.25, audioCtx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.18);
+      osc.connect(f);
+      f.connect(g);
+      g.connect(musicGain);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.18);
+
+      // Hi-hat on every step
+      hihat();
+
+      // Kick on beats 0, 4, 8, 12
+      if (musicStep % 4 === 0) {
+        const kick = audioCtx.createOscillator();
+        const kg = audioCtx.createGain();
+        kick.type = 'sine';
+        kick.frequency.setValueAtTime(150, audioCtx.currentTime);
+        kick.frequency.exponentialRampToValueAtTime(30, audioCtx.currentTime + 0.12);
+        kg.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        kg.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
+        kick.connect(kg);
+        kg.connect(musicGain);
+        kick.start();
+        kick.stop(audioCtx.currentTime + 0.15);
+      }
+
+      // Snare on beats 4, 12
+      if (musicStep % 8 === 4) {
+        const src = audioCtx.createBufferSource();
+        src.buffer = noiseBuffer;
+        const sf = audioCtx.createBiquadFilter();
+        sf.type = 'bandpass';
+        sf.frequency.value = 3000;
+        const sg = audioCtx.createGain();
+        sg.gain.setValueAtTime(0.08, audioCtx.currentTime);
+        sg.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
+        src.connect(sf);
+        sf.connect(sg);
+        sg.connect(musicGain);
+        src.start();
+        src.stop(audioCtx.currentTime + 0.12);
+      }
+
+      musicStep++;
+    }, 140);
+
+  } else if (type === 'boss') {
+    // Intense boss music - faster, deeper, more aggressive
+    const bassLine = [55, 55, 65.41, 55, 73.42, 65.41, 55, 55,
+                      55, 55, 82.41, 73.42, 65.41, 55, 73.42, 55];
+    musicInterval = setInterval(() => {
+      if (muted || !musicPlaying) return;
+      const note = bassLine[musicStep % bassLine.length];
+
+      // Heavy bass
+      const osc = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      const f = audioCtx.createBiquadFilter();
+      osc.type = 'square';
+      osc.frequency.value = note;
+      f.type = 'lowpass';
+      f.frequency.value = 250;
+      g.gain.setValueAtTime(0.2, audioCtx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
+      osc.connect(f);
+      f.connect(g);
+      g.connect(musicGain);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.12);
+
+      // Double-time hi-hat
+      for (let h = 0; h < 2; h++) {
+        const src = audioCtx.createBufferSource();
+        src.buffer = noiseBuffer;
+        const hf = audioCtx.createBiquadFilter();
+        hf.type = 'highpass';
+        hf.frequency.value = 9000;
+        const hg = audioCtx.createGain();
+        const t = audioCtx.currentTime + h * 0.055;
+        hg.gain.setValueAtTime(0.03, t);
+        hg.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+        src.connect(hf);
+        hf.connect(hg);
+        hg.connect(musicGain);
+        src.start(t);
+        src.stop(t + 0.04);
+      }
+
+      // Heavy kick every 2 beats
+      if (musicStep % 2 === 0) {
+        const kick = audioCtx.createOscillator();
+        const kg = audioCtx.createGain();
+        kick.type = 'sine';
+        kick.frequency.setValueAtTime(180, audioCtx.currentTime);
+        kick.frequency.exponentialRampToValueAtTime(25, audioCtx.currentTime + 0.15);
+        kg.gain.setValueAtTime(0.35, audioCtx.currentTime);
+        kg.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.18);
+        kick.connect(kg);
+        kg.connect(musicGain);
+        kick.start();
+        kick.stop(audioCtx.currentTime + 0.18);
+      }
+
+      musicStep++;
+    }, 110);
+  }
+}
+
+function updateMusic() {
+  if (!audioCtx) return;
+  if (muted) {
+    if (musicGain) musicGain.gain.setValueAtTime(0, audioCtx.currentTime);
+    return;
+  }
+  if (musicGain) musicGain.gain.setValueAtTime(0.07, audioCtx.currentTime);
+
+  let targetMusic = '';
+  if (state === 'menu' || state === 'online-menu' || state === 'online-host' || state === 'online-join') {
+    targetMusic = 'menu';
+  } else if (state === 'playing') {
+    let lvl = getCurrentLevel();
+    let isBossWave = lvl.hasBoss && wave === wavesPerLevel;
+    targetMusic = isBossWave ? 'boss' : 'action';
+  } else if (state === 'levelIntro' || state === 'levelComplete') {
+    targetMusic = 'action';
+  } else if (state === 'dead' || state === 'won') {
+    targetMusic = '';
+  }
+
+  if (targetMusic !== musicState) {
+    if (targetMusic === '') {
+      stopMusic();
+    } else {
+      startMusic(targetMusic);
+    }
+  }
+}
+
 // Wrap SFX for online sync
 (function() {
   for (let name in SFX) {
@@ -2181,13 +2417,14 @@ function drawPlayer(p) {
   ctx.fillStyle = hpRatio > 0.5 ? '#2ecc71' : hpRatio > 0.25 ? '#f39c12' : '#e74c3c';
   ctx.fillRect(-p.w / 2, p.h + 4, p.w * hpRatio, 4);
 
-  // Dash indicator
-  if (p.dashCooldown > 0) {
-    ctx.fillStyle = `rgba(${p.dashColor === '#f39c12' ? '243,156,18' : '78,205,196'},0.3)`;
-    ctx.fillRect(-p.w / 2, p.h + 10, p.w * (1 - p.dashCooldown / 40), 3);
+  // Reload indicator
+  if (p.reloading) {
+    ctx.fillStyle = 'rgba(243,156,18,0.3)';
+    ctx.fillRect(-p.w / 2, p.h + 10, p.w * (1 - p.reloadTimer / 50), 3);
   } else {
-    ctx.fillStyle = p.dashColor;
-    ctx.fillRect(-p.w / 2, p.h + 10, p.w, 3);
+    let ammoRatio = p.ammo / p.maxAmmo;
+    ctx.fillStyle = ammoRatio > 0.3 ? '#ffe66d' : '#e74c3c';
+    ctx.fillRect(-p.w / 2, p.h + 10, p.w * ammoRatio, 3);
   }
 
   // Shield energy bar
@@ -3247,6 +3484,7 @@ function draw() {
 function gameLoop() {
   update();
   draw();
+  updateMusic();
   requestAnimationFrame(gameLoop);
 }
 
