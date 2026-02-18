@@ -91,23 +91,126 @@ function playNoise(duration, volume, filterFreq) {
 
 const SFX = {
   shoot_pistol() {
-    playTone(600, 'square', 0.1, 0.15);
-    playNoise(0.05, 0.1, 2000);
+    if (!audioCtx || muted) return;
+    const t = audioCtx.currentTime;
+    // Soft pop
+    const body = audioCtx.createOscillator();
+    const bg = audioCtx.createGain();
+    body.type = 'sine';
+    body.frequency.setValueAtTime(250, t);
+    body.frequency.exponentialRampToValueAtTime(100, t + 0.06);
+    bg.gain.setValueAtTime(0.08, t);
+    bg.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+    body.connect(bg); bg.connect(audioCtx.destination);
+    body.start(t); body.stop(t + 0.08);
+    // Gentle snap
+    const snap = audioCtx.createBufferSource();
+    snap.buffer = noiseBuffer;
+    const sf = audioCtx.createBiquadFilter();
+    sf.type = 'bandpass'; sf.frequency.value = 3000; sf.Q.value = 1;
+    const sg = audioCtx.createGain();
+    sg.gain.setValueAtTime(0.06, t);
+    sg.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+    snap.connect(sf); sf.connect(sg); sg.connect(audioCtx.destination);
+    snap.start(t); snap.stop(t + 0.04);
   },
   shoot_shotgun() {
-    playNoise(0.15, 0.25, 800);
-    playTone(200, 'square', 0.08, 0.1);
+    if (!audioCtx || muted) return;
+    const t = audioCtx.currentTime;
+    // Warm boom
+    const boom = audioCtx.createOscillator();
+    const bg = audioCtx.createGain();
+    boom.type = 'sine';
+    boom.frequency.setValueAtTime(150, t);
+    boom.frequency.exponentialRampToValueAtTime(50, t + 0.12);
+    bg.gain.setValueAtTime(0.12, t);
+    bg.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+    boom.connect(bg); bg.connect(audioCtx.destination);
+    boom.start(t); boom.stop(t + 0.15);
+    // Soft spread noise
+    const blast = audioCtx.createBufferSource();
+    blast.buffer = noiseBuffer;
+    const bf = audioCtx.createBiquadFilter();
+    bf.type = 'lowpass'; bf.frequency.value = 1500;
+    const blg = audioCtx.createGain();
+    blg.gain.setValueAtTime(0.1, t);
+    blg.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+    blast.connect(bf); bf.connect(blg); blg.connect(audioCtx.destination);
+    blast.start(t); blast.stop(t + 0.12);
   },
   shoot_smg() {
-    playTone(800, 'triangle', 0.05, 0.1);
-    playNoise(0.03, 0.05, 3000);
+    if (!audioCtx || muted) return;
+    const t = audioCtx.currentTime;
+    // Light tick
+    const tick = audioCtx.createOscillator();
+    const tg = audioCtx.createGain();
+    tick.type = 'triangle';
+    tick.frequency.setValueAtTime(350, t);
+    tick.frequency.exponentialRampToValueAtTime(150, t + 0.03);
+    tg.gain.setValueAtTime(0.06, t);
+    tg.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+    tick.connect(tg); tg.connect(audioCtx.destination);
+    tick.start(t); tick.stop(t + 0.04);
+    // Tiny puff
+    const puff = audioCtx.createBufferSource();
+    puff.buffer = noiseBuffer;
+    const pf = audioCtx.createBiquadFilter();
+    pf.type = 'bandpass'; pf.frequency.value = 2500; pf.Q.value = 1;
+    const pg = audioCtx.createGain();
+    pg.gain.setValueAtTime(0.04, t);
+    pg.gain.exponentialRampToValueAtTime(0.001, t + 0.025);
+    puff.connect(pf); pf.connect(pg); pg.connect(audioCtx.destination);
+    puff.start(t); puff.stop(t + 0.025);
   },
   shoot_rifle() {
-    playTone(400, 'sawtooth', 0.12, 0.2);
-    playNoise(0.08, 0.15, 1500);
+    if (!audioCtx || muted) return;
+    const t = audioCtx.currentTime;
+    // Firm thud
+    const thud = audioCtx.createOscillator();
+    const tg = audioCtx.createGain();
+    thud.type = 'sine';
+    thud.frequency.setValueAtTime(200, t);
+    thud.frequency.exponentialRampToValueAtTime(60, t + 0.1);
+    tg.gain.setValueAtTime(0.1, t);
+    tg.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+    thud.connect(tg); tg.connect(audioCtx.destination);
+    thud.start(t); thud.stop(t + 0.12);
+    // Smooth crack
+    const crack = audioCtx.createBufferSource();
+    crack.buffer = noiseBuffer;
+    const cf = audioCtx.createBiquadFilter();
+    cf.type = 'bandpass'; cf.frequency.value = 2000; cf.Q.value = 0.8;
+    const cg = audioCtx.createGain();
+    cg.gain.setValueAtTime(0.08, t);
+    cg.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+    crack.connect(cf); cf.connect(cg); cg.connect(audioCtx.destination);
+    crack.start(t); crack.stop(t + 0.1);
+    // Gentle echo tail
+    const echo = audioCtx.createBufferSource();
+    echo.buffer = noiseBuffer;
+    const ef = audioCtx.createBiquadFilter();
+    ef.type = 'lowpass'; ef.frequency.value = 800;
+    const eg = audioCtx.createGain();
+    eg.gain.setValueAtTime(0, t + 0.05);
+    eg.gain.linearRampToValueAtTime(0.03, t + 0.07);
+    eg.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+    echo.connect(ef); ef.connect(eg); eg.connect(audioCtx.destination);
+    echo.start(t); echo.stop(t + 0.25);
   },
   enemyShoot() {
-    playTone(300, 'square', 0.08, 0.08);
+    if (!audioCtx || muted) return;
+    const t = audioCtx.currentTime;
+    // Soft distant pop
+    const pop = audioCtx.createOscillator();
+    const pg = audioCtx.createGain();
+    pop.type = 'sine';
+    pop.frequency.setValueAtTime(200, t);
+    pop.frequency.exponentialRampToValueAtTime(80, t + 0.04);
+    pg.gain.setValueAtTime(0.05, t);
+    pg.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+    pop.connect(pg); pg.connect(audioCtx.destination);
+    pop.start(t); pop.stop(t + 0.05);
+    playNoise(0.03, 0.03, 1500);
   },
   jump() {
     playTone(200, 'sine', 0.15, 0.12, 600);
@@ -154,7 +257,40 @@ const SFX = {
     });
   },
   reload() {
-    playNoise(0.03, 0.15, 3000);
+    if (!audioCtx || muted) return;
+    const t = audioCtx.currentTime;
+    // Magazine click out
+    const click1 = audioCtx.createBufferSource();
+    click1.buffer = noiseBuffer;
+    const c1f = audioCtx.createBiquadFilter();
+    c1f.type = 'bandpass'; c1f.frequency.value = 4000; c1f.Q.value = 5;
+    const c1g = audioCtx.createGain();
+    c1g.gain.setValueAtTime(0.06, t);
+    c1g.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+    click1.connect(c1f); c1f.connect(c1g); c1g.connect(audioCtx.destination);
+    click1.start(t); click1.stop(t + 0.04);
+    // Magazine slide in
+    const slide = audioCtx.createBufferSource();
+    slide.buffer = noiseBuffer;
+    const sf = audioCtx.createBiquadFilter();
+    sf.type = 'bandpass'; sf.frequency.value = 2500; sf.Q.value = 2;
+    const sg = audioCtx.createGain();
+    sg.gain.setValueAtTime(0, t + 0.06);
+    sg.gain.linearRampToValueAtTime(0.05, t + 0.08);
+    sg.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+    slide.connect(sf); sf.connect(sg); sg.connect(audioCtx.destination);
+    slide.start(t); slide.stop(t + 0.14);
+    // Snap click
+    const click2 = audioCtx.createBufferSource();
+    click2.buffer = noiseBuffer;
+    const c2f = audioCtx.createBiquadFilter();
+    c2f.type = 'bandpass'; c2f.frequency.value = 5000; c2f.Q.value = 6;
+    const c2g = audioCtx.createGain();
+    c2g.gain.setValueAtTime(0, t + 0.12);
+    c2g.gain.linearRampToValueAtTime(0.07, t + 0.13);
+    c2g.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+    click2.connect(c2f); c2f.connect(c2g); c2g.connect(audioCtx.destination);
+    click2.start(t); click2.stop(t + 0.16);
   },
   waveStart() {
     if (!audioCtx || muted) return;
