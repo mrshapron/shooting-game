@@ -251,6 +251,9 @@ let slowMo = 1;
 let slowMoTimer = 0;
 let levelTransitionTimer = 0;
 let levelIntroTimer = 0;
+let coopMode = false;
+let player2 = null;
+let menuSelection = 0;
 
 // ─── LEVEL DEFINITIONS ───
 const levels = [
@@ -369,9 +372,11 @@ const SHOOT_COOLDOWN = 8;
 
 let player = createPlayer();
 
-function createPlayer() {
+function createPlayer(startX, colors) {
+  startX = startX || canvas.width / 2;
+  colors = colors || { body: '#3498db', dash: '#4ecdc4', skin: '#f4d35e', hat: '#2c3e50', hatBand: '#e74c3c', shoe: '#e74c3c' };
   return {
-    x: canvas.width / 2, y: GROUND, w: 28, h: 44,
+    x: startX, y: GROUND, w: 28, h: 44,
     vx: 0, vy: 0,
     facing: 1,
     onGround: true,
@@ -392,7 +397,14 @@ function createPlayer() {
     shielding: false,
     shieldEnergy: 180,
     maxShieldEnergy: 180,
-    lastHitTimer: 0
+    lastHitTimer: 0,
+    alive: true,
+    bodyColor: colors.body,
+    dashColor: colors.dash,
+    skinColor: colors.skin,
+    hatColor: colors.hat,
+    hatBand: colors.hatBand,
+    shoeColor: colors.shoe
   };
 }
 
@@ -413,13 +425,40 @@ for (let i = 0; i < 80; i++) {
 
 // ─── KEYS ───
 const keys = {};
+const P1_KEYS = { left: ['a', 'arrowleft'], right: ['d', 'arrowright'], shoot: ['f', 'j', 'z'], shield: 'e', reload: 'r', dash: 'q' };
+const P1_KEYS_COOP = { left: 'a', right: 'd', shoot: 'f', shield: 'e', reload: 'r', dash: 'q' };
+const P2_KEYS = { left: 'arrowleft', right: 'arrowright', shoot: '/', shield: '.', reload: ';', dash: "'" };
+
+function isKeyPressed(keyConfig) {
+  if (Array.isArray(keyConfig)) return keyConfig.some(k => keys[k]);
+  return !!keys[keyConfig];
+}
+
+function performDash(p) {
+  SFX.dash();
+  p.dashing = true;
+  p.dashTimer = DASH_DURATION;
+  p.dashCooldown = 40;
+  p.invincible = DASH_DURATION;
+  p.vx = p.facing * DASH_SPEED;
+  screenShake = 3;
+  for (let i = 0; i < 8; i++) {
+    particles.push({ x: p.x, y: p.y + p.h / 2, vx: -p.facing * (Math.random() * 4 + 2), vy: (Math.random() - 0.5) * 3, life: 15, maxLife: 15, color: p.dashColor || '#4ecdc4', size: 4 });
+  }
+}
+
 document.addEventListener('keydown', e => {
   keys[e.key.toLowerCase()] = true;
   if (['arrowup','arrowdown','arrowleft','arrowright',' '].includes(e.key.toLowerCase())) e.preventDefault();
   initAudio();
   if (e.key.toLowerCase() === 'm') { muted = !muted; return; }
 
-  if (state === 'menu' && (e.key === 'Enter' || e.key === ' ')) { startGame(); return; }
+  if (state === 'menu') {
+    if (e.key === 'ArrowUp' || e.key.toLowerCase() === 'w') { menuSelection = 0; SFX.menuSelect(); return; }
+    if (e.key === 'ArrowDown' || e.key.toLowerCase() === 's') { menuSelection = 1; SFX.menuSelect(); return; }
+    if (e.key === 'Enter' || e.key === ' ') { coopMode = menuSelection === 1; startGame(); return; }
+    return;
+  }
   if (state === 'dead' && (e.key === 'Enter' || e.key === ' ')) { startGame(); return; }
   if (state === 'won' && (e.key === 'Enter' || e.key === ' ')) { startGame(); return; }
   if (state === 'levelComplete' && (e.key === 'Enter' || e.key === ' ')) {
@@ -429,32 +468,41 @@ document.addEventListener('keydown', e => {
   }
 
   if (state === 'playing') {
-    // Jump
-    if ((e.key === 'ArrowUp' || e.key === 'w' || e.key === ' ') && player.jumps > 0) {
+    // P1 Jump (w always, ArrowUp/Space only in solo)
+    if ((e.key.toLowerCase() === 'w' || (!coopMode && (e.key === ' ' || e.key === 'ArrowUp'))) && player.alive && player.jumps > 0) {
       if (player.jumps === 1) SFX.doubleJump(); else SFX.jump();
       player.vy = player.jumps === 2 ? JUMP_FORCE : DOUBLE_JUMP_FORCE;
       player.onGround = false;
       player.jumps--;
-      spawnJumpDust();
-      if (player.jumps === 0) spawnDoubleJumpEffect();
+      spawnJumpDust(player);
+      if (player.jumps === 0) spawnDoubleJumpEffect(player);
     }
-    // Dash
-    if ((e.key === 'Shift') && player.dashCooldown <= 0 && !player.dashing) {
-      SFX.dash();
-      player.dashing = true;
-      player.dashTimer = DASH_DURATION;
-      player.dashCooldown = 40;
-      player.invincible = DASH_DURATION;
-      player.vx = player.facing * DASH_SPEED;
-      screenShake = 3;
-      for (let i = 0; i < 8; i++) {
-        particles.push({ x: player.x, y: player.y + player.h / 2, vx: -player.facing * (Math.random() * 4 + 2), vy: (Math.random() - 0.5) * 3, life: 15, maxLife: 15, color: '#4ecdc4', size: 4 });
-      }
+    // P2 Jump
+    if (coopMode && e.key === 'ArrowUp' && player2 && player2.alive && player2.jumps > 0) {
+      if (player2.jumps === 1) SFX.doubleJump(); else SFX.jump();
+      player2.vy = player2.jumps === 2 ? JUMP_FORCE : DOUBLE_JUMP_FORCE;
+      player2.onGround = false;
+      player2.jumps--;
+      spawnJumpDust(player2);
+      if (player2.jumps === 0) spawnDoubleJumpEffect(player2);
     }
-    // Reload
-    if (e.key === 'r' && !player.reloading && player.ammo < player.maxAmmo) {
+    // P1 Dash (q always, Shift only in solo)
+    if ((e.key.toLowerCase() === 'q' || (!coopMode && e.key === 'Shift')) && player.alive && player.dashCooldown <= 0 && !player.dashing) {
+      performDash(player);
+    }
+    // P2 Dash
+    if (coopMode && e.key === "'" && player2 && player2.alive && player2.dashCooldown <= 0 && !player2.dashing) {
+      performDash(player2);
+    }
+    // P1 Reload
+    if (e.key.toLowerCase() === 'r' && player.alive && !player.reloading && player.ammo < player.maxAmmo) {
       player.reloading = true;
       player.reloadTimer = 40;
+    }
+    // P2 Reload
+    if (coopMode && e.key === ';' && player2 && player2.alive && !player2.reloading && player2.ammo < player2.maxAmmo) {
+      player2.reloading = true;
+      player2.reloadTimer = 40;
     }
   }
 });
@@ -501,7 +549,8 @@ function generatePlatforms() {
 // ─── START GAME ───
 function startGame() {
   SFX.menuSelect();
-  player = createPlayer();
+  player = createPlayer(coopMode ? canvas.width / 3 : canvas.width / 2);
+  player2 = coopMode ? createPlayer(canvas.width * 2 / 3, { body: '#27ae60', dash: '#f39c12', skin: '#f4d35e', hat: '#1a5c2e', hatBand: '#f39c12', shoe: '#f39c12' }) : null;
   bullets = [];
   enemies = [];
   particles = [];
@@ -536,15 +585,23 @@ function completeLevel() {
   state = 'levelComplete';
   levelTransitionTimer = 240; // 4 seconds
   let lvl = getCurrentLevel();
-  // Give reward weapon
-  if (lvl.reward) {
-    player.weapon = lvl.reward;
-    player.ammo = weapons[lvl.reward].ammo;
-    player.maxAmmo = weapons[lvl.reward].ammo;
-    player.reloading = false;
-  }
-  // Heal player
-  player.health = Math.min(player.maxHealth, player.health + 2);
+  // Give rewards and heal both players
+  [player, player2].filter(p => p).forEach(p => {
+    if (lvl.reward) {
+      p.weapon = lvl.reward;
+      p.ammo = weapons[lvl.reward].ammo;
+      p.maxAmmo = weapons[lvl.reward].ammo;
+      p.reloading = false;
+    }
+    // Revive dead players
+    if (!p.alive) {
+      p.alive = true;
+      p.health = 0;
+      p.x = canvas.width / 2;
+      p.y = GROUND - p.h;
+    }
+    p.health = Math.min(p.maxHealth, p.health + 5);
+  });
   score += level * 500;
 }
 
@@ -670,23 +727,25 @@ function spawnExplosion(x, y, color = '#ff9f43', count = 20) {
   }
 }
 
-function spawnJumpDust() {
+function spawnJumpDust(p) {
+  p = p || player;
   for (let i = 0; i < 6; i++) {
     particles.push({
-      x: player.x, y: player.y + player.h,
+      x: p.x, y: p.y + p.h,
       vx: (Math.random() - 0.5) * 4, vy: Math.random() * -1,
       life: 15, maxLife: 15, color: '#888', size: 3
     });
   }
 }
 
-function spawnDoubleJumpEffect() {
+function spawnDoubleJumpEffect(p) {
+  p = p || player;
   for (let i = 0; i < 10; i++) {
     let angle = (Math.PI * 2 / 10) * i;
     particles.push({
-      x: player.x, y: player.y + player.h / 2,
+      x: p.x, y: p.y + p.h / 2,
       vx: Math.cos(angle) * 3, vy: Math.sin(angle) * 3,
-      life: 12, maxLife: 12, color: '#4ecdc4', size: 3
+      life: 12, maxLife: 12, color: p.dashColor || '#4ecdc4', size: 3
     });
   }
 }
@@ -700,20 +759,21 @@ function addFloatingText(text, x, y, color = '#fff', size = 16, life = 60) {
 }
 
 // ─── SHOOTING ───
-function playerShoot() {
-  if (player.shielding || player.shootCooldown > 0 || player.reloading || player.ammo <= 0) return;
+function playerShoot(p) {
+  p = p || player;
+  if (p.shielding || p.shootCooldown > 0 || p.reloading || p.ammo <= 0) return;
 
-  let wep = weapons[player.weapon];
-  player.shootCooldown = wep.fireRate;
+  let wep = weapons[p.weapon];
+  p.shootCooldown = wep.fireRate;
   let pellets = wep.pellets || 1;
 
   for (let i = 0; i < pellets; i++) {
     let spread = (Math.random() - 0.5) * wep.spread * 2;
-    let bx = player.x + player.facing * 20;
-    let by = player.y + 14;
+    let bx = p.x + p.facing * 20;
+    let by = p.y + 14;
     bullets.push({
       x: bx, y: by,
-      vx: Math.cos(spread) * wep.speed * player.facing,
+      vx: Math.cos(spread) * wep.speed * p.facing,
       vy: Math.sin(spread) * wep.speed,
       damage: wep.damage,
       color: wep.color,
@@ -724,21 +784,23 @@ function playerShoot() {
     });
   }
 
-  player.ammo--;
-  if (player.ammo <= 0) {
-    player.reloading = true;
-    player.reloadTimer = 50;
+  p.ammo--;
+  if (p.ammo <= 0) {
+    p.reloading = true;
+    p.reloadTimer = 50;
   }
 
-  if (SFX['shoot_' + player.weapon]) SFX['shoot_' + player.weapon]();
-  spawnMuzzleFlash(player.x + player.facing * 24, player.y + 14, player.facing);
-  spawnCasing(player.x, player.y + 10, player.facing);
+  if (SFX['shoot_' + p.weapon]) SFX['shoot_' + p.weapon]();
+  spawnMuzzleFlash(p.x + p.facing * 24, p.y + 14, p.facing);
+  spawnCasing(p.x, p.y + 10, p.facing);
   screenShake = Math.max(screenShake, wep.fireRate > 15 ? 4 : 2);
 }
 
 function enemyShoot(enemy) {
-  let dx = player.x - enemy.x;
-  let dy = (player.y + player.h / 2) - (enemy.y + enemy.h / 2);
+  let target = getClosestLivingPlayer(enemy.x, enemy.y);
+  if (!target) return;
+  let dx = target.x - enemy.x;
+  let dy = (target.y + target.h / 2) - (enemy.y + enemy.h / 2);
   let dist = Math.sqrt(dx * dx + dy * dy);
   if (dist === 0) return;
   let speed = enemy.bulletSpeed;
@@ -755,6 +817,150 @@ function enemyShoot(enemy) {
     life: 120,
     trail: [],
   });
+}
+
+// ─── HELPERS ───
+function getClosestLivingPlayer(x, y) {
+  let players = [player];
+  if (player2) players.push(player2);
+  players = players.filter(p => p && p.alive);
+  if (players.length === 0) return player; // fallback
+  let closest = players[0];
+  let closestDist = Math.abs(x - closest.x) + Math.abs(y - closest.y);
+  for (let i = 1; i < players.length; i++) {
+    let d = Math.abs(x - players[i].x) + Math.abs(y - players[i].y);
+    if (d < closestDist) {
+      closest = players[i];
+      closestDist = d;
+    }
+  }
+  return closest;
+}
+
+function checkPlayerDeath(p) {
+  if (p.health <= 0) {
+    p.alive = false;
+    SFX.playerDeath();
+    spawnExplosion(p.x, p.y + p.h / 2, '#ffe66d', 40);
+    let allDead = !player.alive && (!player2 || !player2.alive);
+    if (allDead) {
+      SFX.gameOver();
+      state = 'dead';
+      if (score > highScore) {
+        highScore = score;
+        localStorage.setItem('shooterBest', highScore.toString());
+      }
+    } else {
+      let label = (p === player2) ? 'P2 DOWN!' : 'P1 DOWN!';
+      addFloatingText(label, p.x, p.y - 20, '#ff6b6b', 24, 120);
+    }
+  }
+}
+
+function updatePlayerMovement(p, keysConfig, dt) {
+  if (!p || !p.alive) return;
+
+  // Shield
+  let wasShielding = p.shielding;
+  p.shielding = isKeyPressed(keysConfig.shield) && p.shieldEnergy > 0;
+  if (p.shielding && !wasShielding) SFX.shieldUp();
+  if (p.shielding) {
+    p.shieldEnergy = Math.max(0, p.shieldEnergy - dt);
+    if (p.shieldEnergy <= 0) p.shielding = false;
+  } else {
+    p.shieldEnergy = Math.min(p.maxShieldEnergy, p.shieldEnergy + dt * 0.4);
+  }
+
+  // Health regen
+  p.lastHitTimer += dt;
+  if (p.lastHitTimer > 240 && p.health < p.maxHealth) {
+    if (Math.floor(p.lastHitTimer) % 30 === 0) {
+      p.health = Math.min(p.maxHealth, p.health + 1);
+    }
+  }
+
+  // Movement
+  let moveDir = 0;
+  if (isKeyPressed(keysConfig.left)) moveDir = -1;
+  if (isKeyPressed(keysConfig.right)) moveDir = 1;
+
+  if (!p.dashing) {
+    p.vx = moveDir * MOVE_SPEED;
+  }
+
+  if (p.dashing) {
+    p.dashTimer--;
+    if (p.dashTimer <= 0) p.dashing = false;
+  }
+  if (p.dashCooldown > 0) p.dashCooldown--;
+  if (p.invincible > 0) p.invincible--;
+
+  if (moveDir !== 0 && !p.dashing) p.facing = moveDir;
+
+  // Shooting
+  let wep = weapons[p.weapon];
+  if (isKeyPressed(keysConfig.shoot)) {
+    playerShoot(p);
+  }
+  if (wep.auto && isKeyPressed(keysConfig.shoot) && p.shootCooldown <= 0) {
+    playerShoot(p);
+  }
+
+  if (p.shootCooldown > 0) p.shootCooldown -= dt;
+
+  // Reload
+  if (p.reloading) {
+    p.reloadTimer -= dt;
+    if (p.reloadTimer <= 0) {
+      SFX.reload();
+      p.reloading = false;
+      p.ammo = weapons[p.weapon].ammo;
+    }
+  }
+
+  // Physics
+  p.vy += GRAVITY * dt;
+  p.x += p.vx * dt;
+  p.y += p.vy * dt;
+
+  // Trail
+  if (p.dashing || Math.abs(p.vx) > 3) {
+    p.trail.push({ x: p.x, y: p.y, alpha: 0.5 });
+    if (p.trail.length > 8) p.trail.shift();
+  } else {
+    if (p.trail.length > 0) p.trail.shift();
+  }
+
+  // Ground
+  p.onGround = false;
+  if (p.y + p.h >= GROUND) {
+    p.y = GROUND - p.h;
+    p.vy = 0;
+    p.onGround = true;
+    p.jumps = 2;
+  }
+
+  // Platform collision
+  platforms.forEach(plat => {
+    if (p.vy >= 0 &&
+        p.x + p.w / 2 > plat.x && p.x - p.w / 2 < plat.x + plat.w &&
+        p.y + p.h >= plat.y && p.y + p.h <= plat.y + plat.h + 10) {
+      p.y = plat.y - p.h;
+      p.vy = 0;
+      p.onGround = true;
+      p.jumps = 2;
+    }
+  });
+
+  // Bounds
+  p.x = Math.max(p.w / 2, Math.min(canvas.width - p.w / 2, p.x));
+
+  // Weapon timeout
+  if (p.weapon !== 'pistol' && p.ammo <= 0 && !p.reloading) {
+    p.weapon = 'pistol';
+    p.ammo = weapons.pistol.ammo;
+    p.maxAmmo = weapons.pistol.ammo;
+  }
 }
 
 // ─── UPDATE ───
@@ -787,100 +993,10 @@ function update() {
     slowMo = 1;
   }
 
-  // Shield (limited energy)
-  let wasShielding = player.shielding;
-  player.shielding = !!keys['e'] && player.shieldEnergy > 0;
-  if (player.shielding && !wasShielding) SFX.shieldUp();
-  if (player.shielding) {
-    player.shieldEnergy = Math.max(0, player.shieldEnergy - dt);
-    if (player.shieldEnergy <= 0) player.shielding = false;
-  } else {
-    player.shieldEnergy = Math.min(player.maxShieldEnergy, player.shieldEnergy + dt * 0.4);
-  }
-
-  // Health regen (after 4 seconds without taking damage)
-  player.lastHitTimer += dt;
-  if (player.lastHitTimer > 240 && player.health < player.maxHealth) {
-    if (Math.floor(player.lastHitTimer) % 30 === 0) {
-      player.health = Math.min(player.maxHealth, player.health + 1);
-    }
-  }
-
   // Player movement
-  let moveDir = 0;
-  if (keys['arrowleft'] || keys['a']) moveDir = -1;
-  if (keys['arrowright'] || keys['d']) moveDir = 1;
-
-  if (!player.dashing) {
-    player.vx = moveDir * MOVE_SPEED;
-  }
-
-  if (player.dashing) {
-    player.dashTimer--;
-    if (player.dashTimer <= 0) player.dashing = false;
-  }
-  if (player.dashCooldown > 0) player.dashCooldown--;
-  if (player.invincible > 0) player.invincible--;
-
-  if (moveDir !== 0 && !player.dashing) player.facing = moveDir;
-
-  // Auto-fire
-  let wep = weapons[player.weapon];
-  if (keys['j'] || keys['f'] || keys['z']) {
-    playerShoot();
-  }
-  if (wep.auto && (keys['j'] || keys['f'] || keys['z']) && player.shootCooldown <= 0) {
-    playerShoot();
-  }
-
-  if (player.shootCooldown > 0) player.shootCooldown -= dt;
-
-  // Reload
-  if (player.reloading) {
-    player.reloadTimer -= dt;
-    if (player.reloadTimer <= 0) {
-      SFX.reload();
-      player.reloading = false;
-      player.ammo = weapons[player.weapon].ammo;
-    }
-  }
-
-  // Physics
-  player.vy += GRAVITY * dt;
-  player.x += player.vx * dt;
-  player.y += player.vy * dt;
-
-  // Trail
-  if (player.dashing || Math.abs(player.vx) > 3) {
-    player.trail.push({ x: player.x, y: player.y, alpha: 0.5 });
-    if (player.trail.length > 8) player.trail.shift();
-  } else {
-    if (player.trail.length > 0) player.trail.shift();
-  }
-
-  // Ground
-  player.onGround = false;
-  if (player.y + player.h >= GROUND) {
-    player.y = GROUND - player.h;
-    player.vy = 0;
-    player.onGround = true;
-    player.jumps = 2;
-  }
-
-  // Platform collision
-  platforms.forEach(p => {
-    if (player.vy >= 0 &&
-        player.x + player.w / 2 > p.x && player.x - player.w / 2 < p.x + p.w &&
-        player.y + player.h >= p.y && player.y + player.h <= p.y + p.h + 10) {
-      player.y = p.y - player.h;
-      player.vy = 0;
-      player.onGround = true;
-      player.jumps = 2;
-    }
-  });
-
-  // Bounds
-  player.x = Math.max(player.w / 2, Math.min(canvas.width - player.w / 2, player.x));
+  let p1Keys = coopMode ? P1_KEYS_COOP : P1_KEYS;
+  updatePlayerMovement(player, p1Keys, dt);
+  if (player2) updatePlayerMovement(player2, P2_KEYS, dt);
 
   // ─── ENEMIES ───
   enemies.forEach(e => {
@@ -904,24 +1020,32 @@ function update() {
     if (e.hit > 0) e.hit--;
 
     // AI Movement
-    let toPlayer = player.x - e.x;
+    let target = getClosestLivingPlayer(e.x, e.y);
+    let toPlayer = target.x - e.x;
     let dist = Math.abs(toPlayer);
 
     if (e.type === 'bomber') {
-      // Bombers rush toward the player
+      // Bombers rush toward closest player
       e.facing = toPlayer > 0 ? 1 : -1;
       e.x += e.facing * e.speed * dt;
-      if (dist < 30) {
+      let livingPlayers = [player, player2].filter(p => p && p.alive);
+      let shouldExplode = livingPlayers.some(p => Math.abs(e.x - p.x) < 30);
+      if (shouldExplode) {
         SFX.explosion();
         spawnExplosion(e.x, e.y + e.h / 2, '#ff006e', 30);
-        if (player.shielding) {
-          SFX.shieldBlock();
-          screenShake = 4;
-        } else if (player.invincible <= 0) {
-          player.health--;
-          player.lastHitTimer = 0;
-          screenShake = 10;
-        }
+        livingPlayers.forEach(p => {
+          if (Math.abs(e.x - p.x) < 60) {
+            if (p.shielding) {
+              SFX.shieldBlock();
+              screenShake = 4;
+            } else if (p.invincible <= 0) {
+              p.health--;
+              p.lastHitTimer = 0;
+              screenShake = 10;
+              checkPlayerDeath(p);
+            }
+          }
+        });
         e.alive = false;
         score += e.score;
         return;
@@ -1044,37 +1168,31 @@ function update() {
         }
       });
     } else {
-      // Hit player
-      if (player.invincible <= 0 &&
-          Math.abs(b.x - player.x) < player.w / 2 + b.size &&
-          Math.abs(b.y - (player.y + player.h / 2)) < player.h / 2 + b.size) {
-        if (player.shielding) {
-          b.life = 0;
-          SFX.shieldBlock();
-          screenShake = 2;
-          for (let i = 0; i < 5; i++) {
-            particles.push({ x: b.x, y: b.y, vx: (Math.random() - 0.5) * 6, vy: (Math.random() - 0.5) * 6, life: 10, maxLife: 10, color: '#66bbff', size: 3 });
+      // Hit players - check all living players
+      let livingPlayers = [player, player2].filter(p => p && p.alive);
+      for (let p of livingPlayers) {
+        if (p.invincible <= 0 &&
+            Math.abs(b.x - p.x) < p.w / 2 + b.size &&
+            Math.abs(b.y - (p.y + p.h / 2)) < p.h / 2 + b.size) {
+          if (p.shielding) {
+            b.life = 0;
+            SFX.shieldBlock();
+            screenShake = 2;
+            for (let i = 0; i < 5; i++) {
+              particles.push({ x: b.x, y: b.y, vx: (Math.random() - 0.5) * 6, vy: (Math.random() - 0.5) * 6, life: 10, maxLife: 10, color: '#66bbff', size: 3 });
+            }
+          } else {
+            p.health--;
+            p.lastHitTimer = 0;
+            b.life = 0;
+            screenShake = 6;
+            p.invincible = 30;
+            SFX.playerHit();
+            spawnBlood(p.x, p.y + p.h / 2);
+            addFloatingText('-1', p.x, p.y, '#ff6b6b', 20, 40);
+            checkPlayerDeath(p);
           }
-        } else {
-        player.health--;
-        player.lastHitTimer = 0;
-        b.life = 0;
-        screenShake = 6;
-        player.invincible = 30;
-        SFX.playerHit();
-        spawnBlood(player.x, player.y + player.h / 2);
-        addFloatingText('-1', player.x, player.y, '#ff6b6b', 20, 40);
-
-        if (player.health <= 0) {
-          SFX.playerDeath();
-          SFX.gameOver();
-          state = 'dead';
-          spawnExplosion(player.x, player.y + player.h / 2, '#ffe66d', 40);
-          if (score > highScore) {
-            highScore = score;
-            localStorage.setItem('shooterBest', highScore.toString());
-          }
-        }
+          break;
         }
       }
     }
@@ -1085,43 +1203,47 @@ function update() {
   enemies = enemies.filter(e => e.alive);
 
   // ─── POWERUPS ───
-  powerups.forEach(p => {
-    p.vy += 0.15;
-    p.y += p.vy;
-    p.life--;
+  powerups.forEach(pu => {
+    pu.vy += 0.15;
+    pu.y += pu.vy;
+    pu.life--;
 
     // Ground
-    if (p.y + p.h >= GROUND) { p.y = GROUND - p.h; p.vy = 0; }
+    if (pu.y + pu.h >= GROUND) { pu.y = GROUND - pu.h; pu.vy = 0; }
 
     // Platform
     platforms.forEach(plat => {
-      if (p.vy >= 0 && p.x + p.w / 2 > plat.x && p.x - p.w / 2 < plat.x + plat.w &&
-          p.y + p.h >= plat.y && p.y + p.h <= plat.y + plat.h + 8) {
-        p.y = plat.y - p.h; p.vy = 0;
+      if (pu.vy >= 0 && pu.x + pu.w / 2 > plat.x && pu.x - pu.w / 2 < plat.x + plat.w &&
+          pu.y + pu.h >= plat.y && pu.y + pu.h <= plat.y + plat.h + 8) {
+        pu.y = plat.y - pu.h; pu.vy = 0;
       }
     });
 
-    // Pickup
-    if (Math.abs(p.x - player.x) < 25 && Math.abs(p.y - (player.y + player.h / 2)) < 30) {
-      SFX.pickup();
-      p.life = 0;
-      spawnExplosion(p.x, p.y, p.color, 10);
-      if (p.type === 'health') {
-        player.health = Math.min(player.maxHealth, player.health + 2);
-        addFloatingText('+2 HP', p.x, p.y - 10, '#ff6b6b', 18, 50);
-      } else if (p.type === 'slowmo') {
-        slowMoTimer = 180;
-        addFloatingText('SLOW-MO!', p.x, p.y - 10, '#c77dff', 18, 50);
-      } else {
-        player.weapon = p.type;
-        player.ammo = weapons[p.type].ammo;
-        player.maxAmmo = weapons[p.type].ammo;
-        player.reloading = false;
-        addFloatingText(weapons[p.type].name.toUpperCase() + '!', p.x, p.y - 10, p.color, 18, 50);
+    // Pickup - check both players
+    let livingPlayers = [player, player2].filter(p => p && p.alive);
+    for (let p of livingPlayers) {
+      if (Math.abs(pu.x - p.x) < 25 && Math.abs(pu.y - (p.y + p.h / 2)) < 30) {
+        SFX.pickup();
+        pu.life = 0;
+        spawnExplosion(pu.x, pu.y, pu.color, 10);
+        if (pu.type === 'health') {
+          p.health = Math.min(p.maxHealth, p.health + 2);
+          addFloatingText('+2 HP', pu.x, pu.y - 10, '#ff6b6b', 18, 50);
+        } else if (pu.type === 'slowmo') {
+          slowMoTimer = 180;
+          addFloatingText('SLOW-MO!', pu.x, pu.y - 10, '#c77dff', 18, 50);
+        } else {
+          p.weapon = pu.type;
+          p.ammo = weapons[pu.type].ammo;
+          p.maxAmmo = weapons[pu.type].ammo;
+          p.reloading = false;
+          addFloatingText(weapons[pu.type].name.toUpperCase() + '!', pu.x, pu.y - 10, pu.color, 18, 50);
+        }
+        break;
       }
     }
   });
-  powerups = powerups.filter(p => p.life > 0);
+  powerups = powerups.filter(pu => pu.life > 0);
 
   // ─── PARTICLES ───
   particles.forEach(p => {
@@ -1162,12 +1284,6 @@ function update() {
     spawnWave();
   }
 
-  // Weapon timeout - revert to pistol after a while
-  if (player.weapon !== 'pistol' && player.ammo <= 0 && !player.reloading) {
-    player.weapon = 'pistol';
-    player.ammo = weapons.pistol.ammo;
-    player.maxAmmo = weapons.pistol.ammo;
-  }
 }
 
 // ─── BACKDROP ───
@@ -1347,6 +1463,172 @@ function drawBackdrop(type) {
     });
     ctx.globalAlpha = 1;
   }
+}
+
+// ─── DRAW PLAYER ───
+function drawPlayer(p) {
+  if (!p || !p.alive) return;
+
+  // Trail
+  p.trail.forEach((t, i) => {
+    let alpha = (i / p.trail.length) * 0.3;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = p.dashing ? p.dashColor : p.bodyColor;
+    ctx.fillRect(t.x - p.w / 2, t.y, p.w, p.h);
+  });
+  ctx.globalAlpha = 1;
+
+  // Invincibility flash
+  if (p.invincible > 0 && Math.floor(p.invincible / 3) % 2 === 0) {
+    ctx.globalAlpha = 0.5;
+  }
+
+  ctx.save();
+  ctx.translate(p.x, p.y);
+
+  let walkCycle = (p.onGround && Math.abs(p.vx) > 0.5) ? Math.sin(Date.now() * 0.012) : 0;
+  let bodyColor = p.dashing ? p.dashColor : p.bodyColor;
+  let skinColor = p.skinColor;
+
+  // Legs
+  let legSpread = walkCycle * 6;
+  let legBottom = p.h - 4;
+  ctx.lineWidth = 5;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = p.hatColor;
+  ctx.beginPath();
+  ctx.moveTo(-4, 28);
+  ctx.lineTo(-6 - legSpread, legBottom);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(4, 28);
+  ctx.lineTo(6 + legSpread, legBottom);
+  ctx.stroke();
+  // Shoes
+  ctx.fillStyle = p.shoeColor;
+  ctx.beginPath();
+  ctx.ellipse(-6 - legSpread, legBottom, 5, 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(6 + legSpread, legBottom, 5, 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Torso
+  ctx.fillStyle = bodyColor;
+  ctx.beginPath();
+  ctx.moveTo(-10, 14);
+  ctx.lineTo(-11, 28);
+  ctx.lineTo(11, 28);
+  ctx.lineTo(10, 14);
+  ctx.closePath();
+  ctx.fill();
+  // Belt
+  ctx.fillStyle = '#7f8c8d';
+  ctx.fillRect(-10, 26, 20, 3);
+  ctx.fillStyle = '#f1c40f';
+  ctx.fillRect(-2, 26, 4, 3);
+
+  // Back arm
+  ctx.strokeStyle = skinColor;
+  ctx.lineWidth = 4;
+  ctx.lineCap = 'round';
+  let backArmSwing = walkCycle * 4;
+  ctx.beginPath();
+  ctx.moveTo(-p.facing * 6, 17);
+  ctx.lineTo(-p.facing * 10, 26 + backArmSwing);
+  ctx.stroke();
+
+  // Gun arm
+  let gunArmY = 18;
+  ctx.strokeStyle = skinColor;
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(p.facing * 6, 17);
+  ctx.lineTo(p.facing * 13, gunArmY);
+  ctx.stroke();
+
+  // Gun
+  ctx.fillStyle = '#7f8c8d';
+  ctx.save();
+  ctx.translate(p.facing * 13, gunArmY);
+  ctx.fillStyle = '#95a5a6';
+  ctx.fillRect(0, -3, p.facing * 16, 5);
+  ctx.fillStyle = '#5d4e37';
+  ctx.fillRect(0, 2, p.facing * 4, 5);
+  ctx.fillStyle = '#bdc3c7';
+  ctx.fillRect(p.facing * 14, -2, p.facing * 3, 3);
+  ctx.restore();
+
+  // Head
+  ctx.fillStyle = skinColor;
+  ctx.beginPath();
+  ctx.arc(0, 8, 10, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Hat
+  ctx.fillStyle = p.hatColor;
+  ctx.fillRect(-13, 1, 26, 4);
+  ctx.beginPath();
+  ctx.moveTo(-9, 4);
+  ctx.lineTo(-8, -6);
+  ctx.lineTo(8, -6);
+  ctx.lineTo(9, 4);
+  ctx.closePath();
+  ctx.fill();
+  // Hat band
+  ctx.fillStyle = p.hatBand;
+  ctx.fillRect(-9, 0, 18, 3);
+
+  // Face
+  ctx.fillStyle = '#fff';
+  let eyeX = p.facing > 0 ? 3 : -6;
+  ctx.beginPath();
+  ctx.ellipse(eyeX, 7, 3, 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#222';
+  ctx.beginPath();
+  ctx.arc(eyeX + p.facing * 1, 7, 1.5, 0, Math.PI * 2);
+  ctx.fill();
+  // Mouth
+  ctx.strokeStyle = '#c0392b';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(p.facing * 3, 12, 3, 0.1, Math.PI * 0.8);
+  ctx.stroke();
+
+  // Shield
+  if (p.shielding) {
+    let shieldPulse = 0.25 + Math.sin(Date.now() * 0.008) * 0.1;
+    ctx.globalAlpha = shieldPulse;
+    ctx.strokeStyle = '#66bbff';
+    ctx.lineWidth = 3;
+    ctx.shadowColor = '#66bbff';
+    ctx.shadowBlur = 15;
+    ctx.beginPath();
+    ctx.arc(0, p.h / 2, p.w * 0.9, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+  }
+
+  // Dash indicator
+  if (p.dashCooldown > 0) {
+    ctx.fillStyle = `rgba(${p.dashColor === '#f39c12' ? '243,156,18' : '78,205,196'},0.3)`;
+    ctx.fillRect(-p.w / 2, p.h + 6, p.w * (1 - p.dashCooldown / 40), 3);
+  } else {
+    ctx.fillStyle = p.dashColor;
+    ctx.fillRect(-p.w / 2, p.h + 6, p.w, 3);
+  }
+
+  // Shield energy bar
+  let shieldRatio = p.shieldEnergy / p.maxShieldEnergy;
+  ctx.fillStyle = 'rgba(50,50,80,0.5)';
+  ctx.fillRect(-p.w / 2, p.h + 11, p.w, 3);
+  ctx.fillStyle = shieldRatio > 0.3 ? '#66bbff' : '#ff6666';
+  ctx.fillRect(-p.w / 2, p.h + 11, p.w * shieldRatio, 3);
+
+  ctx.restore();
+  ctx.globalAlpha = 1;
 }
 
 // ─── DRAW ───
@@ -1799,177 +2081,24 @@ function draw() {
     ctx.restore();
   });
 
-  // Player
+  // Players
   if (state === 'playing') {
-    // Trail
-    player.trail.forEach((t, i) => {
-      let alpha = (i / player.trail.length) * 0.3;
-      ctx.globalAlpha = alpha;
-      ctx.fillStyle = player.dashing ? '#4ecdc4' : '#3498db';
-      ctx.fillRect(t.x - player.w / 2, t.y, player.w, player.h);
-    });
-    ctx.globalAlpha = 1;
+    drawPlayer(player);
+    if (player2) drawPlayer(player2);
 
-    // Invincibility flash
-    if (player.invincible > 0 && Math.floor(player.invincible / 3) % 2 === 0) {
-      ctx.globalAlpha = 0.5;
+    // P1/P2 labels in co-op
+    if (coopMode) {
+      ctx.font = 'bold 10px monospace';
+      ctx.textAlign = 'center';
+      if (player.alive) {
+        ctx.fillStyle = player.bodyColor;
+        ctx.fillText('P1', player.x, player.y - 10);
+      }
+      if (player2 && player2.alive) {
+        ctx.fillStyle = player2.bodyColor;
+        ctx.fillText('P2', player2.x, player2.y - 10);
+      }
     }
-
-    ctx.save();
-    ctx.translate(player.x, player.y);
-
-    let walkCycle = (player.onGround && Math.abs(player.vx) > 0.5) ? Math.sin(Date.now() * 0.012) : 0;
-    let bodyColor = player.dashing ? '#4ecdc4' : '#3498db';
-    let skinColor = '#f4d35e';
-
-    // ── Legs ──
-    let legSpread = walkCycle * 6;
-    let legBottom = player.h - 4;
-    ctx.lineWidth = 5;
-    ctx.lineCap = 'round';
-    // Left leg
-    ctx.strokeStyle = '#2c3e50';
-    ctx.beginPath();
-    ctx.moveTo(-4, 28);
-    ctx.lineTo(-6 - legSpread, legBottom);
-    ctx.stroke();
-    // Right leg
-    ctx.beginPath();
-    ctx.moveTo(4, 28);
-    ctx.lineTo(6 + legSpread, legBottom);
-    ctx.stroke();
-    // Shoes
-    ctx.fillStyle = '#e74c3c';
-    ctx.beginPath();
-    ctx.ellipse(-6 - legSpread, legBottom, 5, 3, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(6 + legSpread, legBottom, 5, 3, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // ── Torso ──
-    ctx.fillStyle = bodyColor;
-    // Rounded torso
-    ctx.beginPath();
-    ctx.moveTo(-10, 14);
-    ctx.lineTo(-11, 28);
-    ctx.lineTo(11, 28);
-    ctx.lineTo(10, 14);
-    ctx.closePath();
-    ctx.fill();
-    // Belt
-    ctx.fillStyle = '#7f8c8d';
-    ctx.fillRect(-10, 26, 20, 3);
-    ctx.fillStyle = '#f1c40f';
-    ctx.fillRect(-2, 26, 4, 3);
-
-    // ── Back arm ──
-    ctx.strokeStyle = skinColor;
-    ctx.lineWidth = 4;
-    ctx.lineCap = 'round';
-    let backArmSwing = walkCycle * 4;
-    ctx.beginPath();
-    ctx.moveTo(-player.facing * 6, 17);
-    ctx.lineTo(-player.facing * 10, 26 + backArmSwing);
-    ctx.stroke();
-
-    // ── Gun arm ──
-    let gunArmY = 18;
-    ctx.strokeStyle = skinColor;
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.moveTo(player.facing * 6, 17);
-    ctx.lineTo(player.facing * 13, gunArmY);
-    ctx.stroke();
-
-    // ── Gun ──
-    ctx.fillStyle = '#7f8c8d';
-    ctx.save();
-    ctx.translate(player.facing * 13, gunArmY);
-    // Gun body
-    ctx.fillStyle = '#95a5a6';
-    ctx.fillRect(0, -3, player.facing * 16, 5);
-    // Gun grip
-    ctx.fillStyle = '#5d4e37';
-    ctx.fillRect(0, 2, player.facing * 4, 5);
-    // Gun barrel tip
-    ctx.fillStyle = '#bdc3c7';
-    ctx.fillRect(player.facing * 14, -2, player.facing * 3, 3);
-    ctx.restore();
-
-    // ── Head ──
-    ctx.fillStyle = skinColor;
-    ctx.beginPath();
-    ctx.arc(0, 8, 10, 0, Math.PI * 2);
-    ctx.fill();
-
-    // ── Hair/Hat ──
-    ctx.fillStyle = '#2c3e50';
-    // Hat brim
-    ctx.fillRect(-13, 1, 26, 4);
-    // Hat top
-    ctx.beginPath();
-    ctx.moveTo(-9, 4);
-    ctx.lineTo(-8, -6);
-    ctx.lineTo(8, -6);
-    ctx.lineTo(9, 4);
-    ctx.closePath();
-    ctx.fill();
-    // Hat band
-    ctx.fillStyle = '#e74c3c';
-    ctx.fillRect(-9, 0, 18, 3);
-
-    // ── Face ──
-    // Eye
-    ctx.fillStyle = '#fff';
-    let eyeX = player.facing > 0 ? 3 : -6;
-    ctx.beginPath();
-    ctx.ellipse(eyeX, 7, 3, 3, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#222';
-    ctx.beginPath();
-    ctx.arc(eyeX + player.facing * 1, 7, 1.5, 0, Math.PI * 2);
-    ctx.fill();
-    // Mouth - little smirk
-    ctx.strokeStyle = '#c0392b';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.arc(player.facing * 3, 12, 3, 0.1, Math.PI * 0.8);
-    ctx.stroke();
-
-    // ── Shield ──
-    if (player.shielding) {
-      let shieldPulse = 0.25 + Math.sin(Date.now() * 0.008) * 0.1;
-      ctx.globalAlpha = shieldPulse;
-      ctx.strokeStyle = '#66bbff';
-      ctx.lineWidth = 3;
-      ctx.shadowColor = '#66bbff';
-      ctx.shadowBlur = 15;
-      ctx.beginPath();
-      ctx.arc(0, player.h / 2, player.w * 0.9, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-      ctx.globalAlpha = 1;
-    }
-
-    // ── Dash indicator ──
-    if (player.dashCooldown > 0) {
-      ctx.fillStyle = 'rgba(78,205,196,0.3)';
-      ctx.fillRect(-player.w / 2, player.h + 6, player.w * (1 - player.dashCooldown / 40), 3);
-    } else {
-      ctx.fillStyle = '#4ecdc4';
-      ctx.fillRect(-player.w / 2, player.h + 6, player.w, 3);
-    }
-
-    // ── Shield energy bar ──
-    let shieldRatio = player.shieldEnergy / player.maxShieldEnergy;
-    ctx.fillStyle = 'rgba(50,50,80,0.5)';
-    ctx.fillRect(-player.w / 2, player.h + 11, player.w, 3);
-    ctx.fillStyle = shieldRatio > 0.3 ? '#66bbff' : '#ff6666';
-    ctx.fillRect(-player.w / 2, player.h + 11, player.w * shieldRatio, 3);
-
-    ctx.restore();
-    ctx.globalAlpha = 1;
   }
 
   // Floating texts
@@ -1984,55 +2113,119 @@ function draw() {
   ctx.globalAlpha = 1;
 
   // ─── HUD ───
-  // Health
+  // P1 Health
+  let hudBarW = coopMode ? 130 : 150;
   ctx.fillStyle = '#333';
-  ctx.fillRect(20, 15, 150, 14);
-  ctx.fillStyle = player.health > 2 ? '#2ecc71' : player.health > 1 ? '#f39c12' : '#e74c3c';
-  ctx.fillRect(20, 15, 150 * (player.health / player.maxHealth), 14);
+  ctx.fillRect(20, 15, hudBarW, 14);
+  let p1hp = player.alive ? player.health : 0;
+  ctx.fillStyle = p1hp > 2 ? '#2ecc71' : p1hp > 1 ? '#f39c12' : '#e74c3c';
+  ctx.fillRect(20, 15, hudBarW * (p1hp / player.maxHealth), 14);
   ctx.strokeStyle = '#555';
   ctx.lineWidth = 1;
-  ctx.strokeRect(20, 15, 150, 14);
+  ctx.strokeRect(20, 15, hudBarW, 14);
   ctx.fillStyle = '#fff';
   ctx.font = 'bold 10px monospace';
   ctx.textAlign = 'center';
-  ctx.fillText(`HP ${player.health}/${player.maxHealth}`, 95, 26);
-  // Regen indicator
-  if (player.lastHitTimer > 240 && player.health < player.maxHealth) {
+  ctx.fillText(coopMode ? `P1 ${p1hp}/${player.maxHealth}` : `HP ${p1hp}/${player.maxHealth}`, 20 + hudBarW / 2, 26);
+  // P1 Regen indicator
+  if (player.alive && player.lastHitTimer > 240 && player.health < player.maxHealth) {
     ctx.fillStyle = '#2ecc71';
     ctx.font = 'bold 10px monospace';
     ctx.textAlign = 'left';
-    ctx.fillText('+ REGEN', 175, 26);
+    ctx.fillText('+ REGEN', 20 + hudBarW + 5, 26);
   }
 
-  // Shield energy bar
+  // P1 Shield energy bar
   ctx.fillStyle = '#333';
-  ctx.fillRect(20, 32, 150, 8);
+  ctx.fillRect(20, 32, hudBarW, 8);
   let hudShieldRatio = player.shieldEnergy / player.maxShieldEnergy;
   ctx.fillStyle = hudShieldRatio > 0.3 ? '#66bbff' : '#ff6666';
-  ctx.fillRect(20, 32, 150 * hudShieldRatio, 8);
+  ctx.fillRect(20, 32, hudBarW * hudShieldRatio, 8);
   ctx.strokeStyle = '#555';
   ctx.lineWidth = 1;
-  ctx.strokeRect(20, 32, 150, 8);
+  ctx.strokeRect(20, 32, hudBarW, 8);
   ctx.fillStyle = '#fff';
   ctx.font = 'bold 7px monospace';
   ctx.textAlign = 'center';
-  ctx.fillText('SHIELD', 95, 39);
+  ctx.fillText('SHIELD', 20 + hudBarW / 2, 39);
 
-  // Ammo
+  // P1 Ammo
   ctx.textAlign = 'left';
   ctx.font = 'bold 14px monospace';
   ctx.fillStyle = player.reloading ? '#f39c12' : '#fff';
   let ammoText = player.reloading ? `[RELOADING...]` : `${weapons[player.weapon].name}: ${player.ammo}/${player.maxAmmo}`;
-  ctx.fillText(ammoText, 20, 48);
+  ctx.fillText(ammoText, 20, 55);
+
+  // P1 dead indicator
+  if (coopMode && !player.alive) {
+    ctx.fillStyle = 'rgba(233,69,96,0.7)';
+    ctx.font = 'bold 12px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('DEAD', 20, 70);
+  }
+
+  // P2 HUD (co-op only)
+  if (coopMode && player2) {
+    let p2x = canvas.width - 20 - hudBarW;
+    // P2 Health
+    ctx.fillStyle = '#333';
+    ctx.fillRect(p2x, 15, hudBarW, 14);
+    let p2hp = player2.alive ? player2.health : 0;
+    ctx.fillStyle = p2hp > 2 ? '#2ecc71' : p2hp > 1 ? '#f39c12' : '#e74c3c';
+    ctx.fillRect(p2x, 15, hudBarW * (p2hp / player2.maxHealth), 14);
+    ctx.strokeStyle = '#555';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(p2x, 15, hudBarW, 14);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 10px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(`P2 ${p2hp}/${player2.maxHealth}`, p2x + hudBarW / 2, 26);
+    // P2 Shield
+    ctx.fillStyle = '#333';
+    ctx.fillRect(p2x, 32, hudBarW, 8);
+    let p2ShieldRatio = player2.shieldEnergy / player2.maxShieldEnergy;
+    ctx.fillStyle = p2ShieldRatio > 0.3 ? '#66bbff' : '#ff6666';
+    ctx.fillRect(p2x, 32, hudBarW * p2ShieldRatio, 8);
+    ctx.strokeStyle = '#555';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(p2x, 32, hudBarW, 8);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 7px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('SHIELD', p2x + hudBarW / 2, 39);
+    // P2 Ammo
+    ctx.textAlign = 'right';
+    ctx.font = 'bold 14px monospace';
+    ctx.fillStyle = player2.reloading ? '#f39c12' : '#fff';
+    let p2AmmoText = player2.reloading ? `[RELOADING...]` : `${weapons[player2.weapon].name}: ${player2.ammo}/${player2.maxAmmo}`;
+    ctx.fillText(p2AmmoText, canvas.width - 20, 55);
+    // P2 dead indicator
+    if (!player2.alive) {
+      ctx.fillStyle = 'rgba(233,69,96,0.7)';
+      ctx.font = 'bold 12px monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText('DEAD', canvas.width - 20, 70);
+    }
+  }
 
   // Score
-  ctx.textAlign = 'right';
-  ctx.font = 'bold 20px monospace';
-  ctx.fillStyle = '#ffe66d';
-  ctx.fillText(`${score}`, canvas.width - 20, 30);
-  ctx.font = '12px monospace';
-  ctx.fillStyle = '#888';
-  ctx.fillText(`BEST: ${highScore}`, canvas.width - 20, 48);
+  if (coopMode) {
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 20px monospace';
+    ctx.fillStyle = '#ffe66d';
+    ctx.fillText(`${score}`, canvas.width / 2, 80);
+    ctx.font = '10px monospace';
+    ctx.fillStyle = '#888';
+    ctx.fillText(`BEST: ${highScore}`, canvas.width / 2, 92);
+  } else {
+    ctx.textAlign = 'right';
+    ctx.font = 'bold 20px monospace';
+    ctx.fillStyle = '#ffe66d';
+    ctx.fillText(`${score}`, canvas.width - 20, 30);
+    ctx.font = '12px monospace';
+    ctx.fillStyle = '#888';
+    ctx.fillText(`BEST: ${highScore}`, canvas.width - 20, 48);
+  }
 
   // Wave
   ctx.textAlign = 'center';
@@ -2052,7 +2245,7 @@ function draw() {
     ctx.fillStyle = '#c77dff';
     ctx.font = 'bold 14px monospace';
     ctx.textAlign = 'left';
-    ctx.fillText(`SLOW-MO: ${Math.ceil(slowMoTimer / 60)}s`, 20, 68);
+    ctx.fillText(`SLOW-MO: ${Math.ceil(slowMoTimer / 60)}s`, 20, coopMode ? 85 : 68);
   }
 
   // Mute button (bottom-right)
@@ -2082,43 +2275,113 @@ function draw() {
     ctx.textAlign = 'center';
     ctx.fillStyle = '#ffe66d';
     ctx.font = 'bold 48px monospace';
-    ctx.fillText('GUNSLINGER', canvas.width / 2, 140);
+    ctx.fillText('GUNSLINGER', canvas.width / 2, 100);
     ctx.fillStyle = '#e94560';
     ctx.font = 'bold 24px monospace';
-    ctx.fillText('ARENA', canvas.width / 2, 175);
+    ctx.fillText('ARENA', canvas.width / 2, 130);
 
-    ctx.fillStyle = '#aaa';
-    ctx.font = '16px monospace';
-    let y = 230;
-    const lines = [
-      ['A / D  or  Arrows', 'Move'],
-      ['W / Space / Up', 'Jump (x2)'],
-      ['Shift', 'Dash (invincible)'],
-      ['F / J / Z', 'Shoot'],
-      ['E', 'Shield (blocks damage)'],
-      ['R', 'Reload'],
-      ['M', 'Mute / Unmute'],
-    ];
-    lines.forEach(([key, action]) => {
-      ctx.fillStyle = '#4ecdc4';
-      ctx.textAlign = 'right';
-      ctx.fillText(key, canvas.width / 2 - 20, y);
-      ctx.fillStyle = '#aaa';
-      ctx.textAlign = 'left';
-      ctx.fillText(action, canvas.width / 2 + 20, y);
-      y += 28;
+    // Mode selection
+    ctx.font = 'bold 20px monospace';
+    let modes = ['1 PLAYER', '2 PLAYERS (CO-OP)'];
+    modes.forEach((mode, i) => {
+      let my = 170 + i * 32;
+      if (i === menuSelection) {
+        ctx.fillStyle = '#ffe66d';
+        ctx.fillText('> ' + mode + ' <', canvas.width / 2, my);
+      } else {
+        ctx.fillStyle = '#666';
+        ctx.fillText(mode, canvas.width / 2, my);
+      }
     });
+
+    // Controls
+    ctx.fillStyle = '#aaa';
+    ctx.font = '14px monospace';
+    let y = 240;
+
+    if (menuSelection === 0) {
+      // Solo controls
+      const lines = [
+        ['A / D  or  Arrows', 'Move'],
+        ['W / Space / Up', 'Jump (x2)'],
+        ['Q / Shift', 'Dash (invincible)'],
+        ['F / J / Z', 'Shoot'],
+        ['E', 'Shield (blocks damage)'],
+        ['R', 'Reload'],
+        ['M', 'Mute / Unmute'],
+      ];
+      lines.forEach(([key, action]) => {
+        ctx.fillStyle = '#4ecdc4';
+        ctx.textAlign = 'right';
+        ctx.fillText(key, canvas.width / 2 - 15, y);
+        ctx.fillStyle = '#aaa';
+        ctx.textAlign = 'left';
+        ctx.fillText(action, canvas.width / 2 + 15, y);
+        y += 24;
+      });
+    } else {
+      // Co-op controls
+      ctx.fillStyle = '#3498db';
+      ctx.font = 'bold 16px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('P1 (Blue)', canvas.width / 2 - 160, y);
+      ctx.fillStyle = '#27ae60';
+      ctx.fillText('P2 (Green)', canvas.width / 2 + 160, y);
+      y += 24;
+      ctx.font = '13px monospace';
+      const p1Lines = [
+        ['A / D', 'Move'],
+        ['W', 'Jump (x2)'],
+        ['Q', 'Dash'],
+        ['F', 'Shoot'],
+        ['E', 'Shield'],
+        ['R', 'Reload'],
+      ];
+      const p2Lines = [
+        ['< / >', 'Move'],
+        ['Up', 'Jump (x2)'],
+        ["'", 'Dash'],
+        ['/', 'Shoot'],
+        ['.', 'Shield'],
+        [';', 'Reload'],
+      ];
+      for (let i = 0; i < p1Lines.length; i++) {
+        // P1
+        ctx.fillStyle = '#4ecdc4';
+        ctx.textAlign = 'right';
+        ctx.fillText(p1Lines[i][0], canvas.width / 2 - 180, y);
+        ctx.fillStyle = '#aaa';
+        ctx.textAlign = 'left';
+        ctx.fillText(p1Lines[i][1], canvas.width / 2 - 170, y);
+        // P2
+        ctx.fillStyle = '#f39c12';
+        ctx.textAlign = 'right';
+        ctx.fillText(p2Lines[i][0], canvas.width / 2 + 150, y);
+        ctx.fillStyle = '#aaa';
+        ctx.textAlign = 'left';
+        ctx.fillText(p2Lines[i][1], canvas.width / 2 + 160, y);
+        y += 22;
+      }
+      ctx.font = '12px monospace';
+      ctx.fillStyle = '#666';
+      ctx.textAlign = 'center';
+      ctx.fillText('M - Mute / Unmute', canvas.width / 2, y + 8);
+    }
 
     ctx.textAlign = 'center';
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 20px monospace';
+    ctx.font = 'bold 18px monospace';
     let blink = Math.sin(Date.now() * 0.004) > 0;
-    if (blink) ctx.fillText('Press ENTER to start', canvas.width / 2, 420);
+    if (blink) ctx.fillText('Press ENTER to start', canvas.width / 2, 435);
+
+    ctx.fillStyle = '#555';
+    ctx.font = '12px monospace';
+    ctx.fillText('Up/Down to select mode', canvas.width / 2, 455);
 
     if (highScore > 0) {
       ctx.fillStyle = '#888';
       ctx.font = '14px monospace';
-      ctx.fillText(`High Score: ${highScore}`, canvas.width / 2, 455);
+      ctx.fillText(`High Score: ${highScore}`, canvas.width / 2, 480);
     }
   }
 
@@ -2129,7 +2392,7 @@ function draw() {
     ctx.textAlign = 'center';
     ctx.fillStyle = '#e94560';
     ctx.font = 'bold 44px monospace';
-    ctx.fillText('WASTED', canvas.width / 2, 180);
+    ctx.fillText(coopMode ? 'WIPED OUT' : 'WASTED', canvas.width / 2, 180);
 
     ctx.fillStyle = '#ffe66d';
     ctx.font = 'bold 28px monospace';
