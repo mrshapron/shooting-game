@@ -288,29 +288,38 @@ const SFX = {
   reload() {
     if (!audioCtx || muted) return;
     const t = audioCtx.currentTime;
-    // Soft mechanical whir
-    const whir = audioCtx.createOscillator();
-    const wg = audioCtx.createGain();
-    whir.type = 'sine';
-    whir.frequency.setValueAtTime(120, t);
-    whir.frequency.linearRampToValueAtTime(180, t + 0.1);
-    whir.frequency.linearRampToValueAtTime(120, t + 0.2);
-    wg.gain.setValueAtTime(0.03, t);
-    wg.gain.linearRampToValueAtTime(0.02, t + 0.15);
-    wg.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
-    whir.connect(wg); wg.connect(audioCtx.destination);
-    whir.start(t); whir.stop(t + 0.22);
-    // Quiet click at the end
-    const click = audioCtx.createBufferSource();
-    click.buffer = noiseBuffer;
-    const cf = audioCtx.createBiquadFilter();
-    cf.type = 'bandpass'; cf.frequency.value = 3000; cf.Q.value = 2;
-    const cg = audioCtx.createGain();
-    cg.gain.setValueAtTime(0, t + 0.18);
-    cg.gain.linearRampToValueAtTime(0.03, t + 0.19);
-    cg.gain.exponentialRampToValueAtTime(0.001, t + 0.23);
-    click.connect(cf); cf.connect(cg); cg.connect(audioCtx.destination);
-    click.start(t); click.stop(t + 0.23);
+    // Magazine slide out — short descending tone
+    const slideOut = audioCtx.createOscillator();
+    const sg1 = audioCtx.createGain();
+    slideOut.type = 'triangle';
+    slideOut.frequency.setValueAtTime(800, t);
+    slideOut.frequency.exponentialRampToValueAtTime(300, t + 0.08);
+    sg1.gain.setValueAtTime(0.04, t);
+    sg1.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+    slideOut.connect(sg1); sg1.connect(audioCtx.destination);
+    slideOut.start(t); slideOut.stop(t + 0.1);
+    // Magazine slide in — ascending chime
+    const slideIn = audioCtx.createOscillator();
+    const sg2 = audioCtx.createGain();
+    slideIn.type = 'triangle';
+    slideIn.frequency.setValueAtTime(400, t + 0.15);
+    slideIn.frequency.exponentialRampToValueAtTime(1200, t + 0.22);
+    sg2.gain.setValueAtTime(0, t + 0.14);
+    sg2.gain.linearRampToValueAtTime(0.05, t + 0.16);
+    sg2.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+    slideIn.connect(sg2); sg2.connect(audioCtx.destination);
+    slideIn.start(t + 0.14); slideIn.stop(t + 0.25);
+    // Satisfying metallic snap at the end
+    const snap = audioCtx.createBufferSource();
+    snap.buffer = noiseBuffer;
+    const sf = audioCtx.createBiquadFilter();
+    sf.type = 'bandpass'; sf.frequency.value = 4500; sf.Q.value = 5;
+    const sg3 = audioCtx.createGain();
+    sg3.gain.setValueAtTime(0, t + 0.24);
+    sg3.gain.linearRampToValueAtTime(0.06, t + 0.25);
+    sg3.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+    snap.connect(sf); sf.connect(sg3); sg3.connect(audioCtx.destination);
+    snap.start(t + 0.24); snap.stop(t + 0.32);
   },
   waveStart() {
     if (!audioCtx || muted) return;
@@ -1053,7 +1062,8 @@ function createPlayer(startX, colors) {
     hatBand: colors.hatBand,
     shoeColor: colors.shoe,
     shieldBroken: false,
-    shieldBrokenTimer: 0
+    shieldBrokenTimer: 0,
+    lives: 3,
   };
 }
 
@@ -1940,20 +1950,33 @@ function getClosestLivingPlayer(x, y) {
 function checkPlayerDeath(p) {
   if (p.health <= 0) {
     if (pvpMode) return; // PvP handles deaths in bullet collision
-    p.alive = false;
     SFX.playerDeath();
     spawnExplosion(p.x, p.y + p.h / 2, '#ffe66d', 40);
-    let allDead = !player.alive && (!player2 || !player2.alive);
-    if (allDead) {
-      SFX.gameOver();
-      state = 'dead';
-      if (score > highScore) {
-        highScore = score;
-        localStorage.setItem('shooterBest', highScore.toString());
-      }
+    p.lives--;
+    if (p.lives > 0) {
+      // Respawn with a life
+      p.health = p.maxHealth;
+      p.invincible = 90;
+      p.x = 100 + Math.random() * (canvas.width - 200);
+      p.y = GROUND - p.h;
+      p.vy = 0;
+      p.vx = 0;
+      let label = (p === player2) ? 'P2' : (coopMode ? 'P1' : '');
+      addFloatingText(`${label} LIVES: ${p.lives}`, p.x, p.y - 30, '#ffe66d', 20, 90);
     } else {
-      let label = (p === player2) ? 'P2 DOWN!' : 'P1 DOWN!';
-      addFloatingText(label, p.x, p.y - 20, '#ff6b6b', 24, 120);
+      p.alive = false;
+      let allDead = !player.alive && (!player2 || !player2.alive);
+      if (allDead) {
+        SFX.gameOver();
+        state = 'dead';
+        if (score > highScore) {
+          highScore = score;
+          localStorage.setItem('shooterBest', highScore.toString());
+        }
+      } else {
+        let label = (p === player2) ? 'P2 DOWN!' : 'P1 DOWN!';
+        addFloatingText(label, p.x, p.y - 20, '#ff6b6b', 24, 120);
+      }
     }
   }
 }
@@ -4954,11 +4977,15 @@ function draw() {
   let ammoText = player.reloading ? `[RELOADING...]` : `${weapons[player.weapon].name}: ${player.ammo}/${player.maxAmmo}`;
   ctx.fillText(ammoText, 20, 55);
 
-  // P1 Grenade count
+  // P1 Grenade count + Lives
   ctx.font = 'bold 12px monospace';
   ctx.fillStyle = player.grenadeCount > 0 ? '#ff9800' : '#555';
   ctx.textAlign = 'left';
   ctx.fillText(`G: ${player.grenadeCount}`, 20, 70);
+  if (!pvpMode) {
+    ctx.fillStyle = player.lives > 1 ? '#ffe66d' : '#e74c3c';
+    ctx.fillText(`♥ ${player.lives}`, 70, 70);
+  }
 
   // P1 dead indicator
   if (coopMode && !player.alive) {
@@ -5003,11 +5030,15 @@ function draw() {
     ctx.fillStyle = player2.reloading ? '#f39c12' : '#fff';
     let p2AmmoText = player2.reloading ? `[RELOADING...]` : `${weapons[player2.weapon].name}: ${player2.ammo}/${player2.maxAmmo}`;
     ctx.fillText(p2AmmoText, canvas.width - 20, 55);
-    // P2 Grenade count
+    // P2 Grenade count + Lives
     ctx.font = 'bold 12px monospace';
     ctx.fillStyle = player2.grenadeCount > 0 ? '#ff9800' : '#555';
     ctx.textAlign = 'right';
     ctx.fillText(`G: ${player2.grenadeCount}`, canvas.width - 20, 70);
+    if (!pvpMode) {
+      ctx.fillStyle = player2.lives > 1 ? '#ffe66d' : '#e74c3c';
+      ctx.fillText(`♥ ${player2.lives}`, canvas.width - 70, 70);
+    }
     // P2 dead indicator
     if (!player2.alive) {
       ctx.fillStyle = 'rgba(233,69,96,0.7)';
@@ -5103,10 +5134,10 @@ function draw() {
     ctx.fillText('ARENA', canvas.width / 2, 130);
 
     // Mode selection
-    ctx.font = 'bold 20px monospace';
+    ctx.font = 'bold 18px monospace';
     let modes = ['1 PLAYER', 'LOCAL CO-OP', '1v1 LOCAL', 'ONLINE CO-OP', 'ONLINE 1v1'];
     modes.forEach((mode, i) => {
-      let my = 170 + i * 32;
+      let my = 165 + i * 28;
       if (i === menuSelection) {
         ctx.fillStyle = '#ffe66d';
         ctx.fillText('> ' + mode + ' <', canvas.width / 2, my);
@@ -5118,23 +5149,23 @@ function draw() {
 
     // Controls
     ctx.fillStyle = '#aaa';
-    ctx.font = '14px monospace';
-    let y = 240;
+    ctx.font = '12px monospace';
+    let y = 310;
 
     if (menuSelection === 2) {
       // 1v1 local controls - same as local co-op
       ctx.fillStyle = '#e94560';
-      ctx.font = 'bold 16px monospace';
+      ctx.font = 'bold 13px monospace';
       ctx.textAlign = 'center';
       ctx.fillText('FIRST TO 5 KILLS WINS!', canvas.width / 2, y);
-      y += 20;
+      y += 16;
       ctx.fillStyle = '#3498db';
-      ctx.font = 'bold 14px monospace';
+      ctx.font = 'bold 12px monospace';
       ctx.fillText('P1 (Blue)', canvas.width / 2 - 160, y);
       ctx.fillStyle = '#27ae60';
       ctx.fillText('P2 (Green)', canvas.width / 2 + 160, y);
-      y += 22;
-      ctx.font = '12px monospace';
+      y += 16;
+      ctx.font = '11px monospace';
       const pvp1 = [['A / D','Move'],['W','Jump'],['Q','Dash'],['F','Shoot'],['E','Shield'],['R','Reload'],['G','Grenade']];
       const pvp2 = [['< / >','Move'],['Up','Jump'],["'",'Dash'],['/', 'Shoot'],['.','Shield'],[';','Reload'],[',','Grenade']];
       for (let i = 0; i < pvp1.length; i++) {
@@ -5146,27 +5177,27 @@ function draw() {
         ctx.fillText(pvp2[i][0], canvas.width / 2 + 150, y);
         ctx.fillStyle = '#aaa'; ctx.textAlign = 'left';
         ctx.fillText(pvp2[i][1], canvas.width / 2 + 160, y);
-        y += 20;
+        y += 16;
       }
     } else if (menuSelection === 4) {
       // Online 1v1
       ctx.fillStyle = '#e94560';
-      ctx.font = 'bold 16px monospace';
+      ctx.font = 'bold 13px monospace';
       ctx.textAlign = 'center';
       ctx.fillText('FIRST TO 5 KILLS WINS!', canvas.width / 2, y);
-      y += 20;
+      y += 16;
       ctx.fillStyle = '#4ecdc4';
-      ctx.font = '14px monospace';
+      ctx.font = '12px monospace';
       ctx.fillText('Both players use the same keys', canvas.width / 2, y);
-      ctx.fillText('on their own computer', canvas.width / 2, y + 18);
-      y += 46;
+      ctx.fillText('on their own computer', canvas.width / 2, y + 14);
+      y += 34;
       const onPvpLines = [['A / D  or  Arrows','Move'],['W / Space / Up','Jump'],['Q','Dash'],['F','Shoot'],['E','Shield'],['R','Reload'],['G','Grenade']];
       onPvpLines.forEach(([key, action]) => {
         ctx.fillStyle = '#4ecdc4'; ctx.textAlign = 'right';
         ctx.fillText(key, canvas.width / 2 - 15, y);
         ctx.fillStyle = '#aaa'; ctx.textAlign = 'left';
         ctx.fillText(action, canvas.width / 2 + 15, y);
-        y += 22;
+        y += 17;
       });
     } else if (menuSelection === 0) {
       // Solo controls
@@ -5187,18 +5218,18 @@ function draw() {
         ctx.fillStyle = '#aaa';
         ctx.textAlign = 'left';
         ctx.fillText(action, canvas.width / 2 + 15, y);
-        y += 24;
+        y += 17;
       });
     } else if (menuSelection === 1) {
       // Local co-op controls
       ctx.fillStyle = '#3498db';
-      ctx.font = 'bold 16px monospace';
+      ctx.font = 'bold 13px monospace';
       ctx.textAlign = 'center';
       ctx.fillText('P1 (Blue)', canvas.width / 2 - 160, y);
       ctx.fillStyle = '#27ae60';
       ctx.fillText('P2 (Green)', canvas.width / 2 + 160, y);
-      y += 24;
-      ctx.font = '13px monospace';
+      y += 18;
+      ctx.font = '11px monospace';
       const p1Lines = [
         ['A / D', 'Move'],
         ['W', 'Jump (x2)'],
@@ -5230,20 +5261,20 @@ function draw() {
         ctx.fillStyle = '#aaa';
         ctx.textAlign = 'left';
         ctx.fillText(p2Lines[i][1], canvas.width / 2 + 160, y);
-        y += 22;
+        y += 16;
       }
-      ctx.font = '12px monospace';
+      ctx.font = '11px monospace';
       ctx.fillStyle = '#666';
       ctx.textAlign = 'center';
       ctx.fillText('M - Mute / Unmute', canvas.width / 2, y + 8);
     } else if (menuSelection === 3) {
       // Online co-op controls
-      ctx.font = '14px monospace';
+      ctx.font = '12px monospace';
       ctx.fillStyle = '#4ecdc4';
       ctx.textAlign = 'center';
       ctx.fillText('Both players use the same keys', canvas.width / 2, y);
-      ctx.fillText('on their own computer:', canvas.width / 2, y + 20);
-      y += 50;
+      ctx.fillText('on their own computer:', canvas.width / 2, y + 14);
+      y += 34;
       const onlineLines = [
         ['A / D  or  Arrows', 'Move'],
         ['W / Space / Up', 'Jump (x2)'],
@@ -5260,24 +5291,24 @@ function draw() {
         ctx.fillStyle = '#aaa';
         ctx.textAlign = 'left';
         ctx.fillText(action, canvas.width / 2 + 15, y);
-        y += 22;
+        y += 17;
       });
     }
 
     ctx.textAlign = 'center';
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 18px monospace';
+    ctx.font = 'bold 16px monospace';
     let blink = Math.sin(Date.now() * 0.004) > 0;
-    if (blink) ctx.fillText('Press ENTER to start', canvas.width / 2, 435);
+    if (blink) ctx.fillText('Press ENTER to start', canvas.width / 2, 455);
 
     ctx.fillStyle = '#555';
-    ctx.font = '12px monospace';
-    ctx.fillText('Up/Down to select mode', canvas.width / 2, 460);
+    ctx.font = '11px monospace';
+    ctx.fillText('Up/Down to select mode', canvas.width / 2, 472);
 
     if (highScore > 0) {
       ctx.fillStyle = '#888';
-      ctx.font = '14px monospace';
-      ctx.fillText(`High Score: ${highScore}`, canvas.width / 2, 480);
+      ctx.font = '12px monospace';
+      ctx.fillText(`High Score: ${highScore}`, canvas.width / 2, 488);
     }
   }
 
