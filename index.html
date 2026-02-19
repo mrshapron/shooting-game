@@ -699,15 +699,21 @@ function updateMusic() {
   if (musicGain) musicGain.gain.setValueAtTime(0.3, audioCtx.currentTime);
 
   let targetMusic = '';
-  if (state === 'menu' || state === 'online-menu' || state === 'online-host' || state === 'online-join') {
+  if (state === 'menu' || state === 'online-menu' || state === 'online-pvp-menu' || state === 'online-host' || state === 'online-join') {
     targetMusic = 'menu';
   } else if (state === 'playing') {
-    let lvl = getCurrentLevel();
-    let isBossWave = lvl.hasBoss && wave === wavesPerLevel;
-    targetMusic = isBossWave ? 'boss' : 'action';
+    if (pvpMode) {
+      targetMusic = 'boss';
+    } else {
+      let lvl = getCurrentLevel();
+      let isBossWave = lvl.hasBoss && wave === wavesPerLevel;
+      targetMusic = isBossWave ? 'boss' : 'action';
+    }
+  } else if (state === 'pvpIntro') {
+    targetMusic = 'boss';
   } else if (state === 'levelIntro' || state === 'levelComplete') {
     targetMusic = 'action';
-  } else if (state === 'dead' || state === 'won') {
+  } else if (state === 'dead' || state === 'won' || state === 'pvpWin') {
     targetMusic = '';
   }
 
@@ -755,6 +761,12 @@ let player2 = null;
 let menuSelection = 0;
 let paused = false;
 let pauseSelection = 0;
+let pvpMode = false;
+let p1Kills = 0;
+let p2Kills = 0;
+const KILLS_TO_WIN = 5;
+let pvpRoundTimer = 0;
+let pvpWinner = '';
 
 // ─── ONLINE MULTIPLAYER ───
 let onlineMode = false;
@@ -1097,6 +1109,7 @@ document.addEventListener('keydown', e => {
         paused = false;
       } else {
         paused = false;
+        pvpMode = false;
         if (onlineMode) cleanupOnline();
         state = 'menu';
       }
@@ -1124,19 +1137,21 @@ document.addEventListener('keydown', e => {
 
   if (state === 'menu') {
     if (e.key === 'ArrowUp' || e.key.toLowerCase() === 'w') {
-      menuSelection = (menuSelection - 1 + 3) % 3;
+      menuSelection = (menuSelection - 1 + 5) % 5;
       SFX.menuSelect();
       return;
     }
     if (e.key === 'ArrowDown' || e.key.toLowerCase() === 's') {
-      menuSelection = (menuSelection + 1) % 3;
+      menuSelection = (menuSelection + 1) % 5;
       SFX.menuSelect();
       return;
     }
     if (e.key === 'Enter' || e.key === ' ') {
-      if (menuSelection === 0) { coopMode = false; startGame(); }
-      else if (menuSelection === 1) { coopMode = true; startGame(); }
-      else if (menuSelection === 2) { state = 'online-menu'; onlineMenuSelection = 0; SFX.menuSelect(); }
+      if (menuSelection === 0) { coopMode = false; pvpMode = false; startGame(); }
+      else if (menuSelection === 1) { coopMode = true; pvpMode = false; startGame(); }
+      else if (menuSelection === 2) { coopMode = true; pvpMode = true; startPvpGame(); }
+      else if (menuSelection === 3) { state = 'online-menu'; onlineMenuSelection = 0; SFX.menuSelect(); }
+      else if (menuSelection === 4) { state = 'online-pvp-menu'; onlineMenuSelection = 0; SFX.menuSelect(); }
       return;
     }
     return;
@@ -1147,6 +1162,27 @@ document.addEventListener('keydown', e => {
     if (e.key === 'ArrowDown' || e.key.toLowerCase() === 's') { onlineMenuSelection = 1; SFX.menuSelect(); return; }
     if (e.key === 'Enter' || e.key === ' ') {
       SFX.menuSelect();
+      pvpMode = false;
+      if (onlineMenuSelection === 0) {
+        state = 'online-host';
+        startHosting();
+      } else {
+        state = 'online-join';
+        roomCodeInput = '';
+        connectionStatus = '';
+      }
+      return;
+    }
+    if (e.key === 'Escape') { state = 'menu'; return; }
+    return;
+  }
+
+  if (state === 'online-pvp-menu') {
+    if (e.key === 'ArrowUp' || e.key.toLowerCase() === 'w') { onlineMenuSelection = 0; SFX.menuSelect(); return; }
+    if (e.key === 'ArrowDown' || e.key.toLowerCase() === 's') { onlineMenuSelection = 1; SFX.menuSelect(); return; }
+    if (e.key === 'Enter' || e.key === ' ') {
+      SFX.menuSelect();
+      pvpMode = true;
       if (onlineMenuSelection === 0) {
         state = 'online-host';
         startHosting();
@@ -1164,7 +1200,7 @@ document.addEventListener('keydown', e => {
   if (state === 'online-host') {
     if (e.key === 'Escape') {
       cleanupOnline();
-      state = 'menu';
+      state = pvpMode ? 'online-pvp-menu' : 'online-menu';
       return;
     }
     return;
@@ -1173,7 +1209,7 @@ document.addEventListener('keydown', e => {
   if (state === 'online-join') {
     if (e.key === 'Escape') {
       cleanupOnline();
-      state = 'menu';
+      state = pvpMode ? 'online-pvp-menu' : 'online-menu';
       return;
     }
     if (e.key === 'Backspace') {
@@ -1194,9 +1230,11 @@ document.addEventListener('keydown', e => {
 
   // Client cannot trigger restarts
   if (onlineMode && isClient) {
-    if (state === 'dead' || state === 'won' || state === 'levelComplete') return;
+    if (state === 'dead' || state === 'won' || state === 'levelComplete' || state === 'pvpWin') return;
   }
 
+  if (state === 'pvpWin' && (e.key === 'Enter' || e.key === ' ')) { startPvpGame(); return; }
+  if (state === 'pvpWin' && e.key === 'Escape') { pvpMode = false; if (onlineMode) cleanupOnline(); state = 'menu'; return; }
   if (state === 'dead' && (e.key === 'Enter' || e.key === ' ')) { startGame(); return; }
   if (state === 'won' && (e.key === 'Enter' || e.key === ' ')) { startGame(); return; }
   if (state === 'levelComplete' && (e.key === 'Enter' || e.key === ' ')) {
@@ -1330,6 +1368,67 @@ function startLevel() {
   generatePlatforms();
   state = 'levelIntro';
   levelIntroTimer = 180; // 3 seconds
+}
+
+function startPvpGame() {
+  SFX.menuSelect();
+  pvpMode = true;
+  p1Kills = 0;
+  p2Kills = 0;
+  pvpWinner = '';
+  player = createPlayer(canvas.width / 4);
+  player2 = createPlayer(canvas.width * 3 / 4, { body: '#27ae60', dash: '#f39c12', skin: '#f4d35e', hat: '#1a5c2e', hatBand: '#f39c12', shoe: '#f39c12' });
+  bullets = [];
+  enemies = [];
+  particles = [];
+  powerups = [];
+  floatingTexts = [];
+  casings = [];
+  grenades = [];
+  score = 0;
+  level = 1;
+  wave = 0;
+  screenShake = 0;
+  pvpRoundTimer = 0;
+  generatePlatforms();
+  state = 'pvpIntro';
+  levelIntroTimer = 120;
+}
+
+function pvpResetRound() {
+  player.alive = true;
+  player.health = player.maxHealth;
+  player.x = canvas.width / 4;
+  player.y = GROUND - player.h;
+  player.vy = 0;
+  player.vx = 0;
+  player.facing = 1;
+  player.invincible = 60;
+  player.weapon = 'pistol';
+  player.ammo = weapons.pistol.ammo;
+  player.maxAmmo = weapons.pistol.ammo;
+  player.reloading = false;
+  player.shieldEnergy = player.maxShieldEnergy;
+  player.grenadeCount = 2;
+
+  player2.alive = true;
+  player2.health = player2.maxHealth;
+  player2.x = canvas.width * 3 / 4;
+  player2.y = GROUND - player2.h;
+  player2.vy = 0;
+  player2.vx = 0;
+  player2.facing = -1;
+  player2.invincible = 60;
+  player2.weapon = 'pistol';
+  player2.ammo = weapons.pistol.ammo;
+  player2.maxAmmo = weapons.pistol.ammo;
+  player2.reloading = false;
+  player2.shieldEnergy = player2.maxShieldEnergy;
+  player2.grenadeCount = 2;
+
+  bullets = [];
+  grenades = [];
+  pvpRoundTimer = 0;
 }
 
 function completeLevel() {
@@ -1550,6 +1649,7 @@ function playerShoot(p) {
       color: wep.color,
       size: wep.size,
       isPlayer: true,
+      owner: p === player ? 1 : 2,
       life: 80,
       trail: [],
       explosive: !!wep.explosive,
@@ -1632,6 +1732,45 @@ function grenadeExplode(g) {
   SFX.grenadeExplode();
   spawnExplosion(g.x, g.y, '#ff9800', 25);
   screenShake = 10;
+
+  // PvP: damage the other player
+  if (pvpMode) {
+    let target = g.owner === player ? player2 : player;
+    let ownerNum = g.owner === player ? 1 : 2;
+    if (target && target.alive && target.invincible <= 0) {
+      let dx = target.x - g.x;
+      let dy = (target.y + target.h / 2) - g.y;
+      let dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < blastRadius) {
+        let falloff = 1 - (dist / blastRadius);
+        let dmg = Math.ceil(damage * falloff);
+        target.health -= dmg;
+        target.lastHitTimer = 0;
+        target.invincible = 30;
+        SFX.playerHit();
+        spawnBlood(target.x, target.y + target.h / 2);
+        addFloatingText('-' + dmg, target.x, target.y, '#ff6b6b', 20, 40);
+        if (target.health <= 0) {
+          target.alive = false;
+          SFX.playerDeath();
+          spawnExplosion(target.x, target.y + target.h / 2, '#ffe66d', 40);
+          if (ownerNum === 1) { p1Kills++; addFloatingText('P1 KILL!', canvas.width / 2, 100, '#3498db', 28, 90); }
+          else { p2Kills++; addFloatingText('P2 KILL!', canvas.width / 2, 100, '#27ae60', 28, 90); }
+          screenShake = 10;
+          slowMo = 0.3;
+          slowMoTimer = 30;
+          if (p1Kills >= KILLS_TO_WIN || p2Kills >= KILLS_TO_WIN) {
+            pvpWinner = p1Kills >= KILLS_TO_WIN ? 'P1' : 'P2';
+            state = 'pvpWin';
+          } else {
+            pvpRoundTimer = 90;
+          }
+        }
+      }
+    }
+    return;
+  }
+
   // Damage enemies
   enemies.forEach(e => {
     if (!e.alive || e.dying) return;
@@ -1711,6 +1850,7 @@ function getClosestLivingPlayer(x, y) {
 
 function checkPlayerDeath(p) {
   if (p.health <= 0) {
+    if (pvpMode) return; // PvP handles deaths in bullet collision
     p.alive = false;
     SFX.playerDeath();
     spawnExplosion(p.x, p.y + p.h / 2, '#ffe66d', 40);
@@ -1933,7 +2073,7 @@ function setupHostConnection() {
   coopMode = true;
   onlineMode = true;
   isHost = true;
-  startGame();
+  if (pvpMode) { startPvpGame(); } else { startGame(); }
 
   conn.on('data', (data) => {
     if (data.type === 'input') {
@@ -2084,7 +2224,7 @@ function sendGameState() {
     })),
     bullets: bullets.map(b => ({
       x: b.x, y: b.y, vx: b.vx, vy: b.vy, color: b.color, size: b.size,
-      isPlayer: b.isPlayer, life: b.life, explosive: !!b.explosive,
+      isPlayer: b.isPlayer, owner: b.owner, life: b.life, explosive: !!b.explosive,
     })),
     powerups: powerups.map(p => ({
       x: p.x, y: p.y, vy: p.vy, w: p.w, h: p.h, type: p.type, color: p.color, life: p.life,
@@ -2105,6 +2245,10 @@ function sendGameState() {
     levelTransitionTimer: levelTransitionTimer,
     sfx: sfxBuffer.splice(0),
     texts: floatingTextBuffer.splice(0),
+    pvpMode: pvpMode,
+    p1Kills: p1Kills,
+    p2Kills: p2Kills,
+    pvpWinner: pvpWinner,
   });
 }
 
@@ -2169,6 +2313,10 @@ function applyHostState(data) {
   screenShake = data.screenShake;
   levelIntroTimer = data.levelIntroTimer;
   levelTransitionTimer = data.levelTransitionTimer;
+  if (data.pvpMode !== undefined) pvpMode = data.pvpMode;
+  if (data.p1Kills !== undefined) p1Kills = data.p1Kills;
+  if (data.p2Kills !== undefined) p2Kills = data.p2Kills;
+  if (data.pvpWinner !== undefined) pvpWinner = data.pvpWinner;
 
   if (data.sfx) {
     data.sfx.forEach(name => {
@@ -2308,6 +2456,15 @@ function update() {
     return;
   }
 
+  // Handle PvP intro countdown
+  if (state === 'pvpIntro') {
+    levelIntroTimer--;
+    if (levelIntroTimer <= 0) {
+      state = 'playing';
+    }
+    return;
+  }
+
   // Handle level intro countdown
   if (state === 'levelIntro') {
     levelIntroTimer--;
@@ -2326,6 +2483,15 @@ function update() {
     return;
   }
   if (state !== 'playing') return;
+
+  // PvP round reset timer
+  if (pvpMode && pvpRoundTimer > 0) {
+    pvpRoundTimer--;
+    if (pvpRoundTimer <= 0) {
+      pvpResetRound();
+    }
+    // Still update particles/effects during countdown
+  }
 
   let dt = slowMo;
   if (slowMoTimer > 0) {
@@ -2570,7 +2736,52 @@ function update() {
       b.life = 0;
     }
 
-    if (b.isPlayer) {
+    if (b.isPlayer && pvpMode) {
+      // PvP: hit the OTHER player
+      let target = b.owner === 1 ? player2 : player;
+      if (target && target.alive && target.invincible <= 0 &&
+          Math.abs(b.x - target.x) < target.w / 2 + b.size &&
+          Math.abs(b.y - (target.y + target.h / 2)) < target.h / 2 + b.size) {
+        if (target.shielding) {
+          b.life = 0;
+          SFX.shieldBlock();
+          screenShake = 2;
+          for (let i = 0; i < 5; i++) {
+            particles.push({ x: b.x, y: b.y, vx: (Math.random() - 0.5) * 6, vy: (Math.random() - 0.5) * 6, life: 10, maxLife: 10, color: '#66bbff', size: 3 });
+          }
+        } else {
+          target.health -= b.damage;
+          target.lastHitTimer = 0;
+          b.life = 0;
+          screenShake = 6;
+          target.invincible = 30;
+          SFX.playerHit();
+          spawnBlood(target.x, target.y + target.h / 2);
+          addFloatingText('-' + b.damage, target.x, target.y, '#ff6b6b', 20, 40);
+          if (target.health <= 0) {
+            target.alive = false;
+            SFX.playerDeath();
+            spawnExplosion(target.x, target.y + target.h / 2, '#ffe66d', 40);
+            if (b.owner === 1) {
+              p1Kills++;
+              addFloatingText('P1 KILL!', canvas.width / 2, 100, '#3498db', 28, 90);
+            } else {
+              p2Kills++;
+              addFloatingText('P2 KILL!', canvas.width / 2, 100, '#27ae60', 28, 90);
+            }
+            screenShake = 10;
+            slowMo = 0.3;
+            slowMoTimer = 30;
+            if (p1Kills >= KILLS_TO_WIN || p2Kills >= KILLS_TO_WIN) {
+              pvpWinner = p1Kills >= KILLS_TO_WIN ? 'P1' : 'P2';
+              state = 'pvpWin';
+            } else {
+              pvpRoundTimer = 90;
+            }
+          }
+        }
+      }
+    } else if (b.isPlayer) {
       // Hit enemies
       enemies.forEach(e => {
         if (!e.alive || e.dying) return;
@@ -2776,10 +2987,19 @@ function update() {
   if (screenShake > 0) screenShake *= 0.85;
   if (screenShake < 0.5) screenShake = 0;
 
-  // Wave management
-  waveTimer -= dt;
-  if (enemies.length === 0 && waveTimer <= 0) {
-    spawnWave();
+  // Wave management (skip in PvP)
+  if (!pvpMode) {
+    waveTimer -= dt;
+    if (enemies.length === 0 && waveTimer <= 0) {
+      spawnWave();
+    }
+  } else {
+    // PvP: spawn random powerups periodically
+    waveTimer -= dt;
+    if (waveTimer <= 0 && powerups.length < 2) {
+      spawnPowerup();
+      waveTimer = 300 + Math.random() * 200;
+    }
   }
 
 }
@@ -4207,17 +4427,30 @@ function draw() {
     ctx.fillText(`BEST: ${highScore}`, canvas.width - 20, 48);
   }
 
-  // Wave
+  // Wave / PvP score
   ctx.textAlign = 'center';
-  ctx.font = 'bold 14px monospace';
-  ctx.fillStyle = '#888';
-  ctx.fillText(`LVL ${level} - WAVE ${wave}/${wavesPerLevel}`, canvas.width / 2, 28);
+  if (pvpMode) {
+    ctx.font = 'bold 20px monospace';
+    ctx.fillStyle = '#3498db';
+    ctx.fillText(p1Kills, canvas.width / 2 - 40, 28);
+    ctx.fillStyle = '#555';
+    ctx.fillText('-', canvas.width / 2, 28);
+    ctx.fillStyle = '#27ae60';
+    ctx.fillText(p2Kills, canvas.width / 2 + 40, 28);
+    ctx.fillStyle = '#888';
+    ctx.font = '10px monospace';
+    ctx.fillText(`FIRST TO ${KILLS_TO_WIN}`, canvas.width / 2, 44);
+  } else {
+    ctx.font = 'bold 14px monospace';
+    ctx.fillStyle = '#888';
+    ctx.fillText(`LVL ${level} - WAVE ${wave}/${wavesPerLevel}`, canvas.width / 2, 28);
 
-  // Kill streak
-  if (killStreak >= 3) {
-    ctx.fillStyle = '#ffe66d';
-    ctx.font = 'bold 16px monospace';
-    ctx.fillText(`${killStreak}x STREAK`, canvas.width / 2, 48);
+    // Kill streak
+    if (killStreak >= 3) {
+      ctx.fillStyle = '#ffe66d';
+      ctx.font = 'bold 16px monospace';
+      ctx.fillText(`${killStreak}x STREAK`, canvas.width / 2, 48);
+    }
   }
 
   // Slow-mo indicator
@@ -4262,7 +4495,7 @@ function draw() {
 
     // Mode selection
     ctx.font = 'bold 20px monospace';
-    let modes = ['1 PLAYER', 'LOCAL CO-OP', 'ONLINE CO-OP'];
+    let modes = ['1 PLAYER', 'LOCAL CO-OP', '1v1 LOCAL', 'ONLINE CO-OP', 'ONLINE 1v1'];
     modes.forEach((mode, i) => {
       let my = 170 + i * 32;
       if (i === menuSelection) {
@@ -4279,7 +4512,54 @@ function draw() {
     ctx.font = '14px monospace';
     let y = 240;
 
-    if (menuSelection === 0) {
+    if (menuSelection === 2) {
+      // 1v1 local controls - same as local co-op
+      ctx.fillStyle = '#e94560';
+      ctx.font = 'bold 16px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('FIRST TO 5 KILLS WINS!', canvas.width / 2, y);
+      y += 20;
+      ctx.fillStyle = '#3498db';
+      ctx.font = 'bold 14px monospace';
+      ctx.fillText('P1 (Blue)', canvas.width / 2 - 160, y);
+      ctx.fillStyle = '#27ae60';
+      ctx.fillText('P2 (Green)', canvas.width / 2 + 160, y);
+      y += 22;
+      ctx.font = '12px monospace';
+      const pvp1 = [['A / D','Move'],['W','Jump'],['Q','Dash'],['F','Shoot'],['E','Shield'],['R','Reload'],['G','Grenade']];
+      const pvp2 = [['< / >','Move'],['Up','Jump'],["'",'Dash'],['/', 'Shoot'],['.','Shield'],[';','Reload'],[',','Grenade']];
+      for (let i = 0; i < pvp1.length; i++) {
+        ctx.fillStyle = '#4ecdc4'; ctx.textAlign = 'right';
+        ctx.fillText(pvp1[i][0], canvas.width / 2 - 180, y);
+        ctx.fillStyle = '#aaa'; ctx.textAlign = 'left';
+        ctx.fillText(pvp1[i][1], canvas.width / 2 - 170, y);
+        ctx.fillStyle = '#f39c12'; ctx.textAlign = 'right';
+        ctx.fillText(pvp2[i][0], canvas.width / 2 + 150, y);
+        ctx.fillStyle = '#aaa'; ctx.textAlign = 'left';
+        ctx.fillText(pvp2[i][1], canvas.width / 2 + 160, y);
+        y += 20;
+      }
+    } else if (menuSelection === 4) {
+      // Online 1v1
+      ctx.fillStyle = '#e94560';
+      ctx.font = 'bold 16px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('FIRST TO 5 KILLS WINS!', canvas.width / 2, y);
+      y += 20;
+      ctx.fillStyle = '#4ecdc4';
+      ctx.font = '14px monospace';
+      ctx.fillText('Both players use the same keys', canvas.width / 2, y);
+      ctx.fillText('on their own computer', canvas.width / 2, y + 18);
+      y += 46;
+      const onPvpLines = [['A / D  or  Arrows','Move'],['W / Space / Up','Jump'],['Q','Dash'],['F','Shoot'],['E','Shield'],['R','Reload'],['G','Grenade']];
+      onPvpLines.forEach(([key, action]) => {
+        ctx.fillStyle = '#4ecdc4'; ctx.textAlign = 'right';
+        ctx.fillText(key, canvas.width / 2 - 15, y);
+        ctx.fillStyle = '#aaa'; ctx.textAlign = 'left';
+        ctx.fillText(action, canvas.width / 2 + 15, y);
+        y += 22;
+      });
+    } else if (menuSelection === 0) {
       // Solo controls
       const lines = [
         ['A / D  or  Arrows', 'Move'],
@@ -4347,7 +4627,7 @@ function draw() {
       ctx.fillStyle = '#666';
       ctx.textAlign = 'center';
       ctx.fillText('M - Mute / Unmute', canvas.width / 2, y + 8);
-    } else {
+    } else if (menuSelection === 3) {
       // Online co-op controls
       ctx.font = '14px monospace';
       ctx.fillStyle = '#4ecdc4';
@@ -4425,6 +4705,71 @@ function draw() {
       ctx.font = 'bold 18px monospace';
       let blink = Math.sin(Date.now() * 0.004) > 0;
       if (blink) ctx.fillText('Press ENTER to retry', canvas.width / 2, 370);
+    }
+  }
+
+  if (state === 'pvpIntro') {
+    ctx.fillStyle = 'rgba(0,0,0,0.85)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#e94560';
+    ctx.font = 'bold 40px monospace';
+    ctx.fillText('1 v 1 DUEL', canvas.width / 2, 150);
+
+    ctx.fillStyle = '#ffe66d';
+    ctx.font = 'bold 22px monospace';
+    ctx.fillText(`FIRST TO ${KILLS_TO_WIN} KILLS`, canvas.width / 2, 200);
+
+    ctx.font = 'bold 18px monospace';
+    ctx.fillStyle = '#3498db';
+    ctx.fillText('P1', canvas.width / 2 - 60, 260);
+    ctx.fillStyle = '#555';
+    ctx.fillText('VS', canvas.width / 2, 260);
+    ctx.fillStyle = '#27ae60';
+    ctx.fillText('P2', canvas.width / 2 + 60, 260);
+
+    let countdown = Math.ceil(levelIntroTimer / 60);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 48px monospace';
+    ctx.fillText(`${countdown}`, canvas.width / 2, 340);
+
+    ctx.fillStyle = '#888';
+    ctx.font = '16px monospace';
+    ctx.fillText('Get ready...', canvas.width / 2, 390);
+  }
+
+  if (state === 'pvpWin') {
+    ctx.fillStyle = 'rgba(0,0,0,0.8)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.textAlign = 'center';
+    let winColor = pvpWinner === 'P1' ? '#3498db' : '#27ae60';
+    ctx.fillStyle = winColor;
+    ctx.font = 'bold 48px monospace';
+    ctx.fillText(`${pvpWinner} WINS!`, canvas.width / 2, 160);
+
+    ctx.fillStyle = '#ffe66d';
+    ctx.font = 'bold 24px monospace';
+    ctx.fillText(`${p1Kills} - ${p2Kills}`, canvas.width / 2, 220);
+
+    ctx.fillStyle = '#aaa';
+    ctx.font = '16px monospace';
+    ctx.fillText('What a match!', canvas.width / 2, 270);
+
+    if (onlineMode && isClient) {
+      ctx.fillStyle = '#888';
+      ctx.font = '16px monospace';
+      let blink = Math.sin(Date.now() * 0.004) > 0;
+      if (blink) ctx.fillText('Waiting for host...', canvas.width / 2, 340);
+    } else {
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 18px monospace';
+      let blink = Math.sin(Date.now() * 0.004) > 0;
+      if (blink) ctx.fillText('Press ENTER to play again', canvas.width / 2, 340);
+      ctx.fillStyle = '#555';
+      ctx.font = '14px monospace';
+      ctx.fillText('Press ESC for menu', canvas.width / 2, 370);
     }
   }
 
@@ -4533,6 +4878,33 @@ function draw() {
   }
 
   // ─── ONLINE MENU SCREENS ───
+  if (state === 'online-pvp-menu') {
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#e94560';
+    ctx.font = 'bold 36px monospace';
+    ctx.fillText('ONLINE 1v1', canvas.width / 2, 120);
+
+    ctx.font = 'bold 22px monospace';
+    let pvpOpts = ['HOST GAME', 'JOIN GAME'];
+    pvpOpts.forEach((opt, i) => {
+      let oy = 200 + i * 40;
+      if (i === onlineMenuSelection) {
+        ctx.fillStyle = '#ffe66d';
+        ctx.fillText('> ' + opt + ' <', canvas.width / 2, oy);
+      } else {
+        ctx.fillStyle = '#666';
+        ctx.fillText(opt, canvas.width / 2, oy);
+      }
+    });
+
+    ctx.fillStyle = '#555';
+    ctx.font = '14px monospace';
+    ctx.fillText('Press ESC to go back', canvas.width / 2, 340);
+  }
+
   if (state === 'online-menu') {
     ctx.fillStyle = 'rgba(0,0,0,0.7)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -4644,7 +5016,7 @@ function draw() {
   }
 
   // ─── ONLINE HUD INDICATOR ───
-  if (onlineMode && (state === 'playing' || state === 'levelIntro')) {
+  if (onlineMode && (state === 'playing' || state === 'levelIntro' || state === 'pvpIntro')) {
     let connected = conn && conn.open;
     ctx.fillStyle = connected ? '#2ecc71' : '#e94560';
     ctx.beginPath();
