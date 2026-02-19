@@ -1814,8 +1814,8 @@ function rpgExplode(x, y) {
 }
 
 function grenadeExplode(g) {
-  let blastRadius = 70;
-  let damage = 5;
+  let blastRadius = 110;
+  let damage = 8;
   SFX.grenadeExplode();
   spawnExplosion(g.x, g.y, '#ff9800', 25);
   screenShake = 10;
@@ -3825,33 +3825,85 @@ function drawPlayer(p) {
     ctx.stroke();
   }
 
-  // Shield
+  // Shield (enhanced energy dome)
   if (p.shielding) {
-    let shieldPulse = 0.25 + Math.sin(Date.now() * 0.008) * 0.1;
-    ctx.globalAlpha = shieldPulse;
+    let sTime = Date.now() * 0.001;
+    let shieldR = p.w * 0.95;
+    let shieldCY = p.h / 2;
     let shieldColor = isPvp ? (isP1 ? '#3498db' : '#27ae60') : '#66bbff';
-    ctx.strokeStyle = shieldColor;
-    ctx.lineWidth = 3;
-    ctx.shadowColor = shieldColor;
-    ctx.shadowBlur = 15;
+    let shieldRgb = hexToRgb(shieldColor);
+
+    // Outer glow fill
+    let shieldGrad = ctx.createRadialGradient(0, shieldCY, shieldR * 0.5, 0, shieldCY, shieldR);
+    shieldGrad.addColorStop(0, `rgba(${shieldRgb[0]},${shieldRgb[1]},${shieldRgb[2]},0)`);
+    shieldGrad.addColorStop(0.7, `rgba(${shieldRgb[0]},${shieldRgb[1]},${shieldRgb[2]},0.06)`);
+    shieldGrad.addColorStop(1, `rgba(${shieldRgb[0]},${shieldRgb[1]},${shieldRgb[2]},0.15)`);
+    ctx.fillStyle = shieldGrad;
     ctx.beginPath();
-    ctx.arc(0, p.h / 2, p.w * 0.9, 0, Math.PI * 2);
+    ctx.arc(0, shieldCY, shieldR, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Hex grid pattern on dome
+    ctx.globalAlpha = 0.12 + Math.sin(sTime * 3) * 0.04;
+    ctx.strokeStyle = shieldColor;
+    ctx.lineWidth = 0.5;
+    for (let hx = -shieldR; hx < shieldR; hx += 10) {
+      for (let hy = shieldCY - shieldR; hy < shieldCY + shieldR; hy += 9) {
+        let dx = hx, dy = hy - shieldCY;
+        if (dx * dx + dy * dy < shieldR * shieldR * 0.85) {
+          let offset = (Math.floor((hy - shieldCY + shieldR) / 9) % 2) * 5;
+          ctx.beginPath();
+          ctx.arc(hx + offset, hy, 4, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // Rotating energy arcs
+    ctx.globalAlpha = 0.35 + Math.sin(sTime * 4) * 0.1;
+    ctx.strokeStyle = shieldColor;
+    ctx.lineWidth = 2;
+    ctx.shadowColor = shieldColor;
+    ctx.shadowBlur = 12;
+    for (let a = 0; a < 3; a++) {
+      let arcStart = sTime * 2 + a * Math.PI * 2 / 3;
+      ctx.beginPath();
+      ctx.arc(0, shieldCY, shieldR, arcStart, arcStart + 0.8);
+      ctx.stroke();
+    }
+
+    // Main outer ring
+    ctx.globalAlpha = 0.3 + Math.sin(sTime * 5) * 0.08;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(0, shieldCY, shieldR, 0, Math.PI * 2);
     ctx.stroke();
+
+    // Inner ring
+    ctx.globalAlpha = 0.15;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(0, shieldCY, shieldR * 0.7, 0, Math.PI * 2);
+    ctx.stroke();
+
     ctx.shadowBlur = 0;
     ctx.globalAlpha = 1;
   }
 
   // Shield broken flash
   if (p.shieldBroken && p.shieldBrokenTimer > 0) {
-    let flash = Math.sin(Date.now() * 0.02) * 0.15 + 0.1;
+    let flash = Math.sin(Date.now() * 0.02) * 0.2 + 0.15;
     ctx.globalAlpha = flash;
     ctx.strokeStyle = '#ff4444';
     ctx.lineWidth = 2;
+    ctx.shadowColor = '#ff4444';
+    ctx.shadowBlur = 10;
     ctx.setLineDash([4, 4]);
     ctx.beginPath();
-    ctx.arc(0, p.h / 2, p.w * 0.9, 0, Math.PI * 2);
+    ctx.arc(0, p.h / 2, p.w * 0.95, 0, Math.PI * 2);
     ctx.stroke();
     ctx.setLineDash([]);
+    ctx.shadowBlur = 0;
     ctx.globalAlpha = 1;
   }
 
