@@ -796,6 +796,7 @@ const levels = [
     ground: ['#2a2a4a', '#1e1e3a', '#12122a'],
     groundLine: '#5a5a9a', groundGlow: '#6a6aff',
     backdrop: 'city',
+    platformTheme: 'concrete', fogColor: [15, 15, 35],
     enemyTypes: ['basic', 'fast'],
     enemyScale: 0.8,
     platforms: [
@@ -813,6 +814,7 @@ const levels = [
     ground: ['#3a2a3a', '#2a1a2a', '#1a0a1a'],
     groundLine: '#8a4a9a', groundGlow: '#aa4aff',
     backdrop: 'rooftops',
+    platformTheme: 'concrete', fogColor: [25, 15, 45],
     enemyTypes: ['basic', 'fast', 'sniper'],
     enemyScale: 1.2,
     platforms: [
@@ -833,6 +835,7 @@ const levels = [
     ground: ['#2a3a2a', '#1a2a1a', '#0a1a0a'],
     groundLine: '#4a8a4a', groundGlow: '#2aff2a',
     backdrop: 'warehouse',
+    platformTheme: 'metal', fogColor: [10, 20, 10],
     enemyTypes: ['basic', 'fast', 'tank', 'bomber'],
     enemyScale: 1.7,
     platforms: [
@@ -852,6 +855,7 @@ const levels = [
     ground: ['#2a2a3a', '#1e1e2a', '#0e0e1a'],
     groundLine: '#4a6a9a', groundGlow: '#4a8aff',
     backdrop: 'docks',
+    platformTheme: 'metal', fogColor: [10, 15, 30],
     enemyTypes: ['fast', 'tank', 'sniper', 'bomber'],
     enemyScale: 2.2,
     platforms: [
@@ -872,6 +876,7 @@ const levels = [
     ground: ['#3a1a1a', '#2a0a0a', '#1a0000'],
     groundLine: '#9a4a4a', groundGlow: '#ff4a4a',
     backdrop: 'ruins',
+    platformTheme: 'stone', fogColor: [30, 10, 10],
     enemyTypes: ['fast', 'tank', 'sniper', 'bomber'],
     enemyScale: 2.8,
     hasBoss: true,
@@ -892,6 +897,7 @@ const levels = [
     ground: ['#1a2a3a', '#12202e', '#0a1620'],
     groundLine: '#3a7aaa', groundGlow: '#4a9aff',
     backdrop: 'skyline',
+    platformTheme: 'glass', fogColor: [10, 20, 50],
     enemyTypes: ['fast', 'sniper', 'drone'],
     enemyScale: 2.0,
     platforms: [
@@ -911,6 +917,7 @@ const levels = [
     ground: ['#2a2a2a', '#1e1e1e', '#121212'],
     groundLine: '#5a5a5a', groundGlow: '#8a8a8a',
     backdrop: 'airfield',
+    platformTheme: 'concrete', fogColor: [15, 15, 25],
     enemyTypes: ['fast', 'tank', 'drone', 'gunship'],
     enemyScale: 2.5,
     platforms: [
@@ -930,6 +937,7 @@ const levels = [
     ground: ['#2a2018', '#1e1810', '#120e08'],
     groundLine: '#6a5a3a', groundGlow: '#8a7a4a',
     backdrop: 'underground',
+    platformTheme: 'rock', fogColor: [20, 15, 10],
     enemyTypes: ['tank', 'bomber', 'fast', 'basic'],
     enemyScale: 3.0,
     platforms: [
@@ -951,6 +959,7 @@ const levels = [
     ground: ['#2a1a3a', '#1e102a', '#120a1a'],
     groundLine: '#7a4aaa', groundGlow: '#9a6aff',
     backdrop: 'skyfortress',
+    platformTheme: 'darkMetal', fogColor: [20, 10, 40],
     enemyTypes: ['drone', 'gunship', 'sniper'],
     enemyScale: 3.2,
     platforms: [
@@ -973,6 +982,7 @@ const levels = [
     ground: ['#3a1a0a', '#2a0e05', '#1a0500'],
     groundLine: '#aa4a2a', groundGlow: '#ff6a2a',
     backdrop: 'omega',
+    platformTheme: 'darkMetal', fogColor: [30, 10, 5],
     enemyTypes: ['drone', 'gunship', 'tank', 'bomber'],
     enemyScale: 3.5,
     hasBoss: true,
@@ -1041,7 +1051,9 @@ function createPlayer(startX, colors) {
     skinColor: colors.skin,
     hatColor: colors.hat,
     hatBand: colors.hatBand,
-    shoeColor: colors.shoe
+    shoeColor: colors.shoe,
+    shieldBroken: false,
+    shieldBrokenTimer: 0
   };
 }
 
@@ -1060,6 +1072,21 @@ let stars = [];
 for (let i = 0; i < 80; i++) {
   stars.push({ x: Math.random() * canvas.width, y: Math.random() * (GROUND - 40), size: Math.random() * 2 + 0.5, twinkle: Math.random() * Math.PI * 2 });
 }
+
+// ─── 2.5D VISUAL: DUST MOTES ───
+const dustMotes = Array.from({length: 35}, () => ({
+  x: Math.random() * 900,
+  y: Math.random() * 440,
+  size: 1 + Math.random() * 2.5,
+  speedX: 0.15 + Math.random() * 0.4,
+  speedY: Math.random() * 0.15 - 0.075,
+  alpha: 0.12 + Math.random() * 0.18,
+  phase: Math.random() * Math.PI * 2
+}));
+
+// ─── 2.5D VISUAL: SMOKE RING BUFFER ───
+const smokeParticles = [];
+const MAX_SMOKE = 20;
 
 // ─── KEYS ───
 const keys = {};
@@ -1388,14 +1415,34 @@ function startPvpGame() {
   score = 0;
   level = 1;
   wave = 0;
+  waveTimer = 60;
   screenShake = 0;
   pvpRoundTimer = 0;
-  generatePlatforms();
+  generatePvpArena();
   state = 'pvpIntro';
   levelIntroTimer = 120;
 }
 
+function generatePvpArena() {
+  platforms = [
+    { x: 100, y: GROUND - 120, w: 100, h: 12 },
+    { x: 700, y: GROUND - 120, w: 100, h: 12 },
+    { x: 350, y: GROUND - 80, w: 200, h: 12 },
+    { x: 200, y: GROUND - 200, w: 80, h: 12 },
+    { x: 620, y: GROUND - 200, w: 80, h: 12 },
+    { x: 380, y: GROUND - 280, w: 140, h: 12 },
+  ];
+}
+
 function pvpResetRound() {
+  let roundNum = p1Kills + p2Kills;
+  let roundWeapon = 'pistol';
+  if (roundNum > 0 && roundNum % 2 === 0) {
+    let options = ['shotgun', 'smg', 'rifle'];
+    roundWeapon = options[Math.floor(Math.random() * options.length)];
+    addFloatingText(weapons[roundWeapon].name.toUpperCase() + ' ROUND!', canvas.width / 2, 60, weapons[roundWeapon].color, 26, 120);
+  }
+
   player.alive = true;
   player.health = player.maxHealth;
   player.x = canvas.width / 4;
@@ -1404,9 +1451,9 @@ function pvpResetRound() {
   player.vx = 0;
   player.facing = 1;
   player.invincible = 60;
-  player.weapon = 'pistol';
-  player.ammo = weapons.pistol.ammo;
-  player.maxAmmo = weapons.pistol.ammo;
+  player.weapon = roundWeapon;
+  player.ammo = weapons[roundWeapon].ammo;
+  player.maxAmmo = weapons[roundWeapon].ammo;
   player.reloading = false;
   player.shieldEnergy = player.maxShieldEnergy;
   player.grenadeCount = 2;
@@ -1419,15 +1466,16 @@ function pvpResetRound() {
   player2.vx = 0;
   player2.facing = -1;
   player2.invincible = 60;
-  player2.weapon = 'pistol';
-  player2.ammo = weapons.pistol.ammo;
-  player2.maxAmmo = weapons.pistol.ammo;
+  player2.weapon = roundWeapon;
+  player2.ammo = weapons[roundWeapon].ammo;
+  player2.maxAmmo = weapons[roundWeapon].ammo;
   player2.reloading = false;
   player2.shieldEnergy = player2.maxShieldEnergy;
   player2.grenadeCount = 2;
 
   bullets = [];
   grenades = [];
+  powerups = [];
   pvpRoundTimer = 0;
 }
 
@@ -1550,21 +1598,37 @@ function spawnEnemy(type) {
 }
 
 function spawnPowerup() {
-  let types = ['health', 'shotgun', 'smg', 'rifle', 'slowmo', 'grenade'];
+  let types = pvpMode
+    ? ['health', 'shotgun', 'smg', 'rifle', 'grenade']
+    : ['health', 'shotgun', 'smg', 'rifle', 'slowmo', 'grenade'];
   let type = types[Math.floor(Math.random() * types.length)];
   let colors = { health: '#ff6b6b', shotgun: '#ff6b6b', smg: '#4ecdc4', rifle: '#ff9f43', slowmo: '#c77dff', grenade: '#ff9800' };
+  let px = 100 + Math.random() * (canvas.width - 200);
+  let py = GROUND - 200 - Math.random() * 100;
   powerups.push({
-    x: 100 + Math.random() * (canvas.width - 200),
-    y: GROUND - 200 - Math.random() * 100,
+    x: px, y: py,
     vy: 0,
     w: 20, h: 20,
     type, color: colors[type],
     life: 600,
   });
+  if (pvpMode) {
+    let label = type === 'health' ? 'HEALTH!' : type === 'grenade' ? 'GRENADES!' : weapons[type] ? weapons[type].name.toUpperCase() + '!' : type.toUpperCase() + '!';
+    addFloatingText(label, px, py - 30, colors[type], 20, 90);
+    for (let i = 0; i < 15; i++) {
+      particles.push({ x: px + (Math.random() - 0.5) * 10, y: GROUND, vx: 0, vy: -(Math.random() * 6 + 3), life: 35, maxLife: 35, color: colors[type], size: 2 });
+    }
+  }
 }
 
 // ─── EFFECTS ───
 function spawnMuzzleFlash(x, y, dir) {
+  // Flash glow
+  particles.push({
+    x, y, vx: dir * 1, vy: 0,
+    life: 3, maxLife: 3, color: '#fff8dc', size: 8,
+    type: 'spark', glow: true
+  });
   for (let i = 0; i < 6; i++) {
     particles.push({
       x, y, vx: dir * (Math.random() * 6 + 3), vy: (Math.random() - 0.5) * 3,
@@ -1584,13 +1648,36 @@ function spawnBlood(x, y) {
 
 function spawnExplosion(x, y, color = '#ff9f43', count = 20) {
   screenShake = 8;
-  for (let i = 0; i < count; i++) {
+  // Layer 1: bright core sparks (small, fast, white-yellow, glow)
+  for (let i = 0; i < Math.floor(count * 0.4); i++) {
+    let angle = (Math.PI * 2 / count) * i + Math.random() * 0.5;
+    let speed = Math.random() * 8 + 4;
+    particles.push({
+      x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - 2,
+      life: 15, maxLife: 15, color: '#fff8dc', size: 2 + Math.random() * 2,
+      type: 'spark', glow: true
+    });
+  }
+  // Layer 2: mid fire particles (medium, orange)
+  for (let i = 0; i < Math.floor(count * 0.4); i++) {
     let angle = (Math.PI * 2 / count) * i + Math.random() * 0.3;
-    let speed = Math.random() * 6 + 2;
+    let speed = Math.random() * 5 + 2;
     particles.push({
       x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - 1,
-      life: 30, maxLife: 30, color, size: 3 + Math.random() * 4
+      life: 25, maxLife: 25, color, size: 3 + Math.random() * 4,
+      type: 'fire', glow: false
     });
+  }
+  // Layer 3: outer smoke puffs (large, slow, gray, grows)
+  let smokeCount = Math.min(MAX_SMOKE - smokeParticles.length, Math.floor(count * 0.3));
+  for (let i = 0; i < smokeCount; i++) {
+    let angle = Math.random() * Math.PI * 2;
+    let sp = {
+      x, y, vx: Math.cos(angle) * (Math.random() * 1.5 + 0.5), vy: -(Math.random() * 1 + 0.5),
+      life: 55, maxLife: 55, color: '#666', size: 4 + Math.random() * 3,
+      type: 'smoke', glow: false
+    };
+    smokeParticles.push(sp);
   }
 }
 
@@ -1747,6 +1834,9 @@ function grenadeExplode(g) {
         target.health -= dmg;
         target.lastHitTimer = 0;
         target.invincible = 30;
+        let knockDir = (target.x - g.x) / (dist || 1);
+        target.vx += knockDir * 6;
+        target.vy -= 4;
         SFX.playerHit();
         spawnBlood(target.x, target.y + target.h / 2);
         addFloatingText('-' + dmg, target.x, target.y, '#ff6b6b', 20, 40);
@@ -1873,14 +1963,33 @@ function updatePlayerMovement(p, keysConfig, dt) {
   if (!p || !p.alive) return;
 
   // Shield
-  let wasShielding = p.shielding;
-  p.shielding = isKeyPressed(keysConfig.shield) && p.shieldEnergy > 0;
-  if (p.shielding && !wasShielding) SFX.shieldUp();
-  if (p.shielding) {
-    p.shieldEnergy = Math.max(0, p.shieldEnergy - dt);
-    if (p.shieldEnergy <= 0) p.shielding = false;
+  if (p.shieldBrokenTimer > 0) {
+    p.shieldBrokenTimer -= dt;
+    p.shielding = false;
+    p.shieldEnergy = Math.min(p.maxShieldEnergy, p.shieldEnergy + dt * 0.1);
+    if (p.shieldBrokenTimer <= 0) p.shieldBroken = false;
   } else {
-    p.shieldEnergy = Math.min(p.maxShieldEnergy, p.shieldEnergy + dt * 0.4);
+    let wasShielding = p.shielding;
+    p.shielding = isKeyPressed(keysConfig.shield) && p.shieldEnergy > 0;
+    if (p.shielding && !wasShielding) SFX.shieldUp();
+    if (p.shielding) {
+      p.shieldEnergy = Math.max(0, p.shieldEnergy - dt);
+      if (p.shieldEnergy <= 0) {
+        p.shielding = false;
+        if (pvpMode) {
+          p.shieldBroken = true;
+          p.shieldBrokenTimer = 60;
+          SFX.shieldBlock();
+          screenShake = 5;
+          for (let i = 0; i < 15; i++) {
+            particles.push({ x: p.x, y: p.y + p.h / 2, vx: (Math.random() - 0.5) * 8, vy: (Math.random() - 0.5) * 8, life: 20, maxLife: 20, color: '#66bbff', size: 3 });
+          }
+          addFloatingText('SHIELD BREAK!', p.x, p.y - 20, '#66bbff', 18, 60);
+        }
+      }
+    } else {
+      p.shieldEnergy = Math.min(p.maxShieldEnergy, p.shieldEnergy + dt * 0.4);
+    }
   }
 
   // Health regen
@@ -2750,11 +2859,14 @@ function update() {
             particles.push({ x: b.x, y: b.y, vx: (Math.random() - 0.5) * 6, vy: (Math.random() - 0.5) * 6, life: 10, maxLife: 10, color: '#66bbff', size: 3 });
           }
         } else {
-          target.health -= b.damage;
+          let pvpDmg = pvpMode ? Math.min(b.damage, 3) : b.damage;
+          target.health -= pvpDmg;
           target.lastHitTimer = 0;
           b.life = 0;
           screenShake = 6;
           target.invincible = 30;
+          target.vx += b.vx * 0.3;
+          target.vy -= 2;
           SFX.playerHit();
           spawnBlood(target.x, target.y + target.h / 2);
           addFloatingText('-' + b.damage, target.x, target.y, '#ff6b6b', 20, 40);
@@ -3004,6 +3116,105 @@ function update() {
 
 }
 
+// ─── 2.5D VISUAL HELPERS ───
+
+// Platform theme colors (cached)
+const platformThemes = {
+  concrete: { top: '#5a5a8a', front: '#2a2a40', side: '#18183a', glow: '#7a7aff', line: '#9a9add' },
+  metal:    { top: '#6a6a70', front: '#333338', side: '#1e1e22', glow: '#9a9acc', line: '#8a8a9a' },
+  stone:    { top: '#7a6a55', front: '#3a2a18', side: '#2a1a0a', glow: '#bb9a6a', line: '#9a8a70' },
+  glass:    { top: '#4a7aaa', front: '#1a3050', side: '#0a1a30', glow: '#5abaff', line: '#6a9add' },
+  rock:     { top: '#6a5545', front: '#2a1a08', side: '#1a0a00', glow: '#aa8a55', line: '#7a6a4a' },
+  darkMetal:{ top: '#4a3a6a', front: '#1a0a2a', side: '#0a0018', glow: '#aa7aff', line: '#8a5acc' },
+};
+
+// Cached gradient map (key -> gradient)
+const _gradientCache = {};
+
+function drawShadow(x, entityY, entityW, groundY) {
+  let dist = groundY - entityY;
+  let maxDist = 300;
+  let scale = Math.max(0.35, 1 - dist / maxDist);
+  let shadowW = entityW * (0.7 + (1 - scale) * 0.4);
+  let shadowH = shadowW * 0.25;
+  let alpha = 0.4 * scale;
+  ctx.fillStyle = `rgba(0,0,0,${alpha})`;
+  ctx.beginPath();
+  ctx.ellipse(x, groundY, shadowW, shadowH, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function findShadowSurface(x, entityY, entityH) {
+  let entityBottom = entityY + entityH;
+  let bestY = GROUND;
+  platforms.forEach(p => {
+    if (x > p.x && x < p.x + p.w && p.y > entityBottom && p.y < bestY) {
+      bestY = p.y;
+    }
+  });
+  return bestY;
+}
+
+function hexToRgb(hex) {
+  let key = hex;
+  if (_gradientCache['rgb_' + key]) return _gradientCache['rgb_' + key];
+  let result;
+  if (hex && hex.startsWith('#')) {
+    let h = hex.slice(1);
+    if (h.length === 3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+    let r = parseInt(h.slice(0, 2), 16);
+    let g = parseInt(h.slice(2, 4), 16);
+    let b = parseInt(h.slice(4, 6), 16);
+    result = [r||0, g||0, b||0];
+  } else {
+    result = [128, 128, 128];
+  }
+  _gradientCache['rgb_' + key] = result;
+  return result;
+}
+
+function lighten(rgb, amt) {
+  return [Math.min(255, rgb[0] + amt), Math.min(255, rgb[1] + amt), Math.min(255, rgb[2] + amt)];
+}
+
+function darken(rgb, amt) {
+  return [Math.max(0, rgb[0] - amt), Math.max(0, rgb[1] - amt), Math.max(0, rgb[2] - amt)];
+}
+
+function rgbStr(rgb) { return `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`; }
+
+function make3DGradient(ctx, x, y, w, h, baseColor) {
+  let rgb = typeof baseColor === 'string' ? hexToRgb(baseColor) : baseColor;
+  let grad = ctx.createLinearGradient(x, y, x + w, y);
+  grad.addColorStop(0, rgbStr(lighten(rgb, 70)));
+  grad.addColorStop(0.35, rgbStr(lighten(rgb, 15)));
+  grad.addColorStop(1, rgbStr(darken(rgb, 65)));
+  return grad;
+}
+
+function makeHeadGradient(ctx, cx, cy, r, baseColor) {
+  let rgb = typeof baseColor === 'string' ? hexToRgb(baseColor) : baseColor;
+  let grad = ctx.createRadialGradient(cx - r * 0.35, cy - r * 0.35, r * 0.05, cx, cy, r);
+  grad.addColorStop(0, rgbStr(lighten(rgb, 80)));
+  grad.addColorStop(0.5, rgbStr(lighten(rgb, 10)));
+  grad.addColorStop(1, rgbStr(darken(rgb, 50)));
+  return grad;
+}
+
+function makeLimbGradient(ctx, x1, y1, x2, y2, baseColor) {
+  let rgb = typeof baseColor === 'string' ? hexToRgb(baseColor) : baseColor;
+  let mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+  let dx = x2 - x1, dy = y2 - y1;
+  let nx = -dy, ny = dx;
+  let len = Math.sqrt(nx * nx + ny * ny) || 1;
+  nx /= len; ny /= len;
+  let grad = ctx.createLinearGradient(mx + nx * 5, my + ny * 5, mx - nx * 5, my - ny * 5);
+  grad.addColorStop(0, rgbStr(lighten(rgb, 55)));
+  grad.addColorStop(0.45, rgbStr(rgb));
+  grad.addColorStop(1, rgbStr(darken(rgb, 45)));
+  return grad;
+}
+
 // ─── BACKDROP ───
 function drawBackdrop(type) {
   let lvl = getCurrentLevel();
@@ -3125,7 +3336,7 @@ function drawBackdrop(type) {
       let cy = c.stack ? GROUND - 60 : GROUND - 30;
       ctx.fillStyle = c.c;
       ctx.fillRect(c.x, cy, c.w, c.h);
-      ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
       ctx.lineWidth = 1;
       ctx.strokeRect(c.x, cy, c.w, c.h);
     });
@@ -3397,9 +3608,21 @@ function drawBackdrop(type) {
 function drawPlayer(p) {
   if (!p || !p.alive) return;
 
+  let isP1 = (p === player);
+  let isPvp = pvpMode;
+
+  // PvP glow aura
+  if (isPvp) {
+    let glowColor = isP1 ? 'rgba(52,152,219,0.12)' : 'rgba(39,174,96,0.12)';
+    ctx.fillStyle = glowColor;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y + p.h / 2, 30, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   // Trail
   p.trail.forEach((t, i) => {
-    let alpha = (i / p.trail.length) * 0.3;
+    let alpha = (i / p.trail.length) * (isPvp ? 0.45 : 0.3);
     ctx.globalAlpha = alpha;
     ctx.fillStyle = p.dashing ? p.dashColor : p.bodyColor;
     ctx.fillRect(t.x - p.w / 2, t.y, p.w, p.h);
@@ -3418,16 +3641,17 @@ function drawPlayer(p) {
   let bodyColor = p.dashing ? p.dashColor : p.bodyColor;
   let skinColor = p.skinColor;
 
-  // Legs
+  // Legs (3D gradient shading)
   let legSpread = walkCycle * 6;
   let legBottom = p.h - 4;
   ctx.lineWidth = 5;
   ctx.lineCap = 'round';
-  ctx.strokeStyle = p.hatColor;
+  ctx.strokeStyle = makeLimbGradient(ctx, -4, 28, -6 - legSpread, legBottom, p.hatColor);
   ctx.beginPath();
   ctx.moveTo(-4, 28);
   ctx.lineTo(-6 - legSpread, legBottom);
   ctx.stroke();
+  ctx.strokeStyle = makeLimbGradient(ctx, 4, 28, 6 + legSpread, legBottom, p.hatColor);
   ctx.beginPath();
   ctx.moveTo(4, 28);
   ctx.lineTo(6 + legSpread, legBottom);
@@ -3441,8 +3665,8 @@ function drawPlayer(p) {
   ctx.ellipse(6 + legSpread, legBottom, 5, 3, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Torso
-  ctx.fillStyle = bodyColor;
+  // Torso (3D gradient shading — lit from left)
+  ctx.fillStyle = make3DGradient(ctx, -11, 14, 22, 14, bodyColor);
   ctx.beginPath();
   ctx.moveTo(-10, 14);
   ctx.lineTo(-11, 28);
@@ -3450,25 +3674,56 @@ function drawPlayer(p) {
   ctx.lineTo(10, 14);
   ctx.closePath();
   ctx.fill();
+  // Torso rim highlight
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(-10, 14);
+  ctx.lineTo(-11, 28);
+  ctx.stroke();
+
+  // PvP: unique torso markings
+  if (isPvp) {
+    if (isP1) {
+      // P1: star badge
+      ctx.fillStyle = '#ffe66d';
+      ctx.beginPath();
+      ctx.arc(0, 21, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = bodyColor;
+      ctx.beginPath();
+      ctx.arc(0, 21, 2, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      // P2: X marking
+      ctx.strokeStyle = '#ff9800';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(-3, 19); ctx.lineTo(3, 25);
+      ctx.moveTo(3, 19); ctx.lineTo(-3, 25);
+      ctx.stroke();
+    }
+  }
+
   // Belt
   ctx.fillStyle = '#7f8c8d';
   ctx.fillRect(-10, 26, 20, 3);
-  ctx.fillStyle = '#f1c40f';
+  ctx.fillStyle = isPvp && isP1 ? '#3498db' : isPvp ? '#f39c12' : '#f1c40f';
   ctx.fillRect(-2, 26, 4, 3);
 
-  // Back arm
-  ctx.strokeStyle = skinColor;
+  // Back arm (3D shaded)
   ctx.lineWidth = 4;
   ctx.lineCap = 'round';
   let backArmSwing = walkCycle * 4;
+  ctx.strokeStyle = makeLimbGradient(ctx, -p.facing * 6, 17, -p.facing * 10, 26 + backArmSwing, skinColor);
   ctx.beginPath();
   ctx.moveTo(-p.facing * 6, 17);
   ctx.lineTo(-p.facing * 10, 26 + backArmSwing);
   ctx.stroke();
 
-  // Gun arm
+  // Gun arm (3D shaded)
   let gunArmY = 18;
-  ctx.strokeStyle = skinColor;
+  ctx.strokeStyle = makeLimbGradient(ctx, p.facing * 6, 17, p.facing * 13, gunArmY, skinColor);
   ctx.lineWidth = 4;
   ctx.beginPath();
   ctx.moveTo(p.facing * 6, 17);
@@ -3476,7 +3731,6 @@ function drawPlayer(p) {
   ctx.stroke();
 
   // Gun
-  ctx.fillStyle = '#7f8c8d';
   ctx.save();
   ctx.translate(p.facing * 13, gunArmY);
   ctx.fillStyle = '#95a5a6';
@@ -3487,50 +3741,98 @@ function drawPlayer(p) {
   ctx.fillRect(p.facing * 14, -2, p.facing * 3, 3);
   ctx.restore();
 
-  // Head
-  ctx.fillStyle = skinColor;
+  // Head (3D radial gradient)
+  ctx.fillStyle = makeHeadGradient(ctx, 0, 8, 10, skinColor);
   ctx.beginPath();
   ctx.arc(0, 8, 10, 0, Math.PI * 2);
   ctx.fill();
+  // Specular highlight
+  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.beginPath();
+  ctx.arc(-3, 4, 3, 0, Math.PI * 2);
+  ctx.fill();
 
-  // Hat
-  ctx.fillStyle = p.hatColor;
-  ctx.fillRect(-13, 1, 26, 4);
-  ctx.beginPath();
-  ctx.moveTo(-9, 4);
-  ctx.lineTo(-8, -6);
-  ctx.lineTo(8, -6);
-  ctx.lineTo(9, 4);
-  ctx.closePath();
-  ctx.fill();
-  // Hat band
-  ctx.fillStyle = p.hatBand;
-  ctx.fillRect(-9, 0, 18, 3);
+  // PvP unique headgear
+  if (isPvp && isP1) {
+    // P1: bandana
+    ctx.fillStyle = '#3498db';
+    ctx.beginPath();
+    ctx.moveTo(-11, 4); ctx.lineTo(-10, -2); ctx.lineTo(10, -2); ctx.lineTo(11, 4);
+    ctx.closePath();
+    ctx.fill();
+    // Bandana tail
+    ctx.strokeStyle = '#2980b9';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(-p.facing * 10, 1);
+    ctx.quadraticCurveTo(-p.facing * 18, 4 + Math.sin(Date.now() * 0.006) * 2, -p.facing * 16, 10);
+    ctx.stroke();
+    // Scar
+    ctx.strokeStyle = '#c0392b';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(p.facing > 0 ? -2 : 2, 4);
+    ctx.lineTo(p.facing > 0 ? -5 : 5, 12);
+    ctx.stroke();
+  } else if (isPvp && !isP1) {
+    // P2: helmet/mask
+    ctx.fillStyle = '#1a5c2e';
+    ctx.beginPath();
+    ctx.arc(0, 6, 11, -Math.PI, 0);
+    ctx.fill();
+    // Visor
+    ctx.fillStyle = '#f39c12';
+    ctx.fillRect(-8, 4, 16, 3);
+    // Mask lower
+    ctx.fillStyle = '#2d3436';
+    ctx.beginPath();
+    ctx.moveTo(-8, 7);
+    ctx.lineTo(-6, 15);
+    ctx.lineTo(6, 15);
+    ctx.lineTo(8, 7);
+    ctx.closePath();
+    ctx.fill();
+  } else {
+    // Default hat (non-PvP)
+    ctx.fillStyle = p.hatColor;
+    ctx.fillRect(-13, 1, 26, 4);
+    ctx.beginPath();
+    ctx.moveTo(-9, 4);
+    ctx.lineTo(-8, -6);
+    ctx.lineTo(8, -6);
+    ctx.lineTo(9, 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = p.hatBand;
+    ctx.fillRect(-9, 0, 18, 3);
+  }
 
-  // Face
-  ctx.fillStyle = '#fff';
-  let eyeX = p.facing > 0 ? 3 : -6;
-  ctx.beginPath();
-  ctx.ellipse(eyeX, 7, 3, 3, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#222';
-  ctx.beginPath();
-  ctx.arc(eyeX + p.facing * 1, 7, 1.5, 0, Math.PI * 2);
-  ctx.fill();
-  // Mouth
-  ctx.strokeStyle = '#c0392b';
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.arc(p.facing * 3, 12, 3, 0.1, Math.PI * 0.8);
-  ctx.stroke();
+  // Face (skip for P2 in PvP - has mask)
+  if (!(isPvp && !isP1)) {
+    ctx.fillStyle = '#fff';
+    let eyeX = p.facing > 0 ? 3 : -6;
+    ctx.beginPath();
+    ctx.ellipse(eyeX, 7, 3, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#222';
+    ctx.beginPath();
+    ctx.arc(eyeX + p.facing * 1, 7, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#c0392b';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(p.facing * 3, 12, 3, 0.1, Math.PI * 0.8);
+    ctx.stroke();
+  }
 
   // Shield
   if (p.shielding) {
     let shieldPulse = 0.25 + Math.sin(Date.now() * 0.008) * 0.1;
     ctx.globalAlpha = shieldPulse;
-    ctx.strokeStyle = '#66bbff';
+    let shieldColor = isPvp ? (isP1 ? '#3498db' : '#27ae60') : '#66bbff';
+    ctx.strokeStyle = shieldColor;
     ctx.lineWidth = 3;
-    ctx.shadowColor = '#66bbff';
+    ctx.shadowColor = shieldColor;
     ctx.shadowBlur = 15;
     ctx.beginPath();
     ctx.arc(0, p.h / 2, p.w * 0.9, 0, Math.PI * 2);
@@ -3539,29 +3841,57 @@ function drawPlayer(p) {
     ctx.globalAlpha = 1;
   }
 
+  // Shield broken flash
+  if (p.shieldBroken && p.shieldBrokenTimer > 0) {
+    let flash = Math.sin(Date.now() * 0.02) * 0.15 + 0.1;
+    ctx.globalAlpha = flash;
+    ctx.strokeStyle = '#ff4444';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.arc(0, p.h / 2, p.w * 0.9, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+  }
+
   // Health bar
   let hpRatio = p.health / p.maxHealth;
-  ctx.fillStyle = 'rgba(50,50,50,0.5)';
-  ctx.fillRect(-p.w / 2, p.h + 4, p.w, 4);
+  let hpBarW = isPvp ? 36 : p.w;
+  ctx.fillStyle = 'rgba(50,50,50,0.6)';
+  ctx.fillRect(-hpBarW / 2, p.h + 4, hpBarW, isPvp ? 5 : 4);
   ctx.fillStyle = hpRatio > 0.5 ? '#2ecc71' : hpRatio > 0.25 ? '#f39c12' : '#e74c3c';
-  ctx.fillRect(-p.w / 2, p.h + 4, p.w * hpRatio, 4);
+  ctx.fillRect(-hpBarW / 2, p.h + 4, hpBarW * hpRatio, isPvp ? 5 : 4);
+  if (isPvp) {
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(-hpBarW / 2, p.h + 4, hpBarW, 5);
+  }
+
+  // PvP: player label
+  if (isPvp) {
+    ctx.fillStyle = isP1 ? '#3498db' : '#27ae60';
+    ctx.font = 'bold 9px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(isP1 ? 'P1' : 'P2', 0, -6);
+  }
 
   // Reload indicator
   if (p.reloading) {
     ctx.fillStyle = 'rgba(243,156,18,0.3)';
-    ctx.fillRect(-p.w / 2, p.h + 10, p.w * (1 - p.reloadTimer / 50), 3);
+    ctx.fillRect(-p.w / 2, p.h + (isPvp ? 11 : 10), p.w * (1 - p.reloadTimer / 50), 3);
   } else {
     let ammoRatio = p.ammo / p.maxAmmo;
     ctx.fillStyle = ammoRatio > 0.3 ? '#ffe66d' : '#e74c3c';
-    ctx.fillRect(-p.w / 2, p.h + 10, p.w * ammoRatio, 3);
+    ctx.fillRect(-p.w / 2, p.h + (isPvp ? 11 : 10), p.w * ammoRatio, 3);
   }
 
   // Shield energy bar
   let shieldRatio = p.shieldEnergy / p.maxShieldEnergy;
   ctx.fillStyle = 'rgba(50,50,80,0.5)';
-  ctx.fillRect(-p.w / 2, p.h + 15, p.w, 3);
-  ctx.fillStyle = shieldRatio > 0.3 ? '#66bbff' : '#ff6666';
-  ctx.fillRect(-p.w / 2, p.h + 15, p.w * shieldRatio, 3);
+  ctx.fillRect(-p.w / 2, p.h + (isPvp ? 16 : 15), p.w, 3);
+  ctx.fillStyle = p.shieldBroken ? '#ff4444' : (shieldRatio > 0.3 ? '#66bbff' : '#ff6666');
+  ctx.fillRect(-p.w / 2, p.h + (isPvp ? 16 : 15), p.w * shieldRatio, 3);
 
   ctx.restore();
   ctx.globalAlpha = 1;
@@ -3595,10 +3925,90 @@ function draw() {
     ctx.fillRect(s.x, s.y, s.size, s.size);
   });
 
-  // Backdrop
+  // ─── 2.5D: FAR PARALLAX LAYER ───
+  let pTime = Date.now() * 0.001;
+  let farOffset = pTime * 0.5;
+  ctx.globalAlpha = 0.5;
+  // Far layer: distant mountain/skyline silhouettes
+  let farRgb = hexToRgb(lvl.sky[2]);
+  ctx.fillStyle = rgbStr(lighten(farRgb, 15));
+  for (let i = 0; i < 2; i++) {
+    let ox = ((i * 900) - (farOffset * 20) % 900 + 900) % 1800 - 450;
+    ctx.beginPath();
+    ctx.moveTo(ox, GROUND);
+    for (let mx = 0; mx <= 900; mx += 40) {
+      let mh = 70 + Math.sin(mx * 0.007 + i * 2) * 50 + Math.cos(mx * 0.013 + i) * 30;
+      ctx.lineTo(ox + mx, GROUND - mh);
+    }
+    ctx.lineTo(ox + 900, GROUND);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // Backdrop (mid parallax layer)
   drawBackdrop(lvl.backdrop);
 
-  // Ground
+  // ─── 2.5D: DEPTH FOG GRADIENT (Phase 5) ───
+  if (lvl.fogColor) {
+    let fc = lvl.fogColor;
+    let fogGrad = ctx.createLinearGradient(0, 0, 0, GROUND);
+    fogGrad.addColorStop(0, `rgba(${fc[0]},${fc[1]},${fc[2]},0)`);
+    fogGrad.addColorStop(0.6, `rgba(${fc[0]},${fc[1]},${fc[2]},0.06)`);
+    fogGrad.addColorStop(1, `rgba(${fc[0]},${fc[1]},${fc[2]},0.15)`);
+    ctx.fillStyle = fogGrad;
+    ctx.fillRect(0, 0, canvas.width, GROUND);
+  }
+
+  // ─── 2.5D: NEAR PARALLAX LAYER ───
+  let nearOffset = pTime * 2.0;
+  ctx.globalAlpha = 0.25;
+  ctx.fillStyle = lvl.ground[0];
+  for (let i = 0; i < 15; i++) {
+    let fx = ((i * 70 - (nearOffset * 30) % 1050) + 1050) % 1050 - 60;
+    let fh = 8 + (i * 7 % 16);
+    let fw = 14 + (i * 5 % 12);
+    ctx.fillRect(fx, GROUND - fh, fw, fh);
+  }
+  ctx.globalAlpha = 1;
+
+  // ─── 2.5D: GOD RAYS (Phase 5 — select levels) ───
+  if (lvl.backdrop === 'skyfortress' || lvl.backdrop === 'omega' || lvl.backdrop === 'skyline') {
+    let savedOp = ctx.globalCompositeOperation;
+    ctx.globalCompositeOperation = 'lighter';
+    let rayColor = lvl.backdrop === 'omega' ? 'rgba(255,60,20,' : lvl.backdrop === 'skyfortress' ? 'rgba(150,100,255,' : 'rgba(60,160,255,';
+    for (let r = 0; r < 4; r++) {
+      let rx = 120 + r * 200 + Math.sin(pTime * 0.3 + r * 1.5) * 40;
+      let rw = 30 + r * 10;
+      ctx.globalAlpha = 0.08;
+      ctx.fillStyle = rayColor + '0.6)';
+      ctx.beginPath();
+      ctx.moveTo(rx, 0);
+      ctx.lineTo(rx + rw, 0);
+      ctx.lineTo(rx + rw + 60, GROUND);
+      ctx.lineTo(rx - 40, GROUND);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = savedOp;
+  }
+
+  // ─── 2.5D: DUST MOTES (Phase 5) ───
+  let dustColor = lvl.fogColor ? `rgba(${Math.min(255,lvl.fogColor[0]+100)},${Math.min(255,lvl.fogColor[1]+100)},${Math.min(255,lvl.fogColor[2]+100)},` : 'rgba(200,200,200,';
+  dustMotes.forEach(d => {
+    d.x += d.speedX;
+    d.y += d.speedY + Math.sin(pTime * 2 + d.phase) * 0.05;
+    if (d.x > 910) d.x = -10;
+    if (d.y > 450) d.y = -10;
+    if (d.y < -10) d.y = 450;
+    ctx.fillStyle = dustColor + d.alpha + ')';
+    ctx.beginPath();
+    ctx.arc(d.x, d.y, d.size, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Ground (Phase 7: with depth enhancements)
   let groundGrad = ctx.createLinearGradient(0, GROUND, 0, canvas.height);
   groundGrad.addColorStop(0, lvl.ground[0]);
   groundGrad.addColorStop(0.3, lvl.ground[1]);
@@ -3615,8 +4025,24 @@ function draw() {
   ctx.lineTo(canvas.width, GROUND);
   ctx.stroke();
   ctx.shadowBlur = 0;
+  // Perspective grid lines (Phase 7)
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.lineWidth = 1;
+  let gridSpacing = 4;
+  for (let gi = 0; gi < 8; gi++) {
+    ctx.beginPath();
+    ctx.moveTo(0, GROUND + gridSpacing);
+    ctx.lineTo(canvas.width, GROUND + gridSpacing);
+    ctx.stroke();
+    gridSpacing += 3 + gi * 1.5;
+  }
+  // Ground surface shine (Phase 7)
+  let shineGrad = ctx.createRadialGradient(canvas.width / 2, GROUND + 2, 5, canvas.width / 2, GROUND + 2, 250);
+  shineGrad.addColorStop(0, 'rgba(255,255,255,0.1)');
+  shineGrad.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = shineGrad;
+  ctx.fillRect(canvas.width / 2 - 200, GROUND, 400, 20);
   // Ground texture - small dashes
-  ctx.strokeStyle = lvl.groundLine.replace(')', ',0.2)').replace('rgb', 'rgba').replace('#', '');
   ctx.globalAlpha = 0.2;
   ctx.strokeStyle = lvl.groundLine;
   ctx.lineWidth = 1;
@@ -3638,30 +4064,80 @@ function draw() {
   }
   ctx.globalAlpha = 1;
 
-  // Platforms
+  // ─── 2.5D: 3D PLATFORMS (Phase 3) ───
+  let theme = platformThemes[lvl.platformTheme] || platformThemes.concrete;
   platforms.forEach(p => {
-    // Platform body with gradient
-    let platGrad = ctx.createLinearGradient(p.x, p.y, p.x, p.y + p.h);
-    platGrad.addColorStop(0, '#3a3a6a');
-    platGrad.addColorStop(1, '#2a2a4a');
-    ctx.fillStyle = platGrad;
+    let thickness = 12;
+    // Shadow below platform
+    let shadowGrad = ctx.createLinearGradient(p.x, p.y + p.h, p.x, p.y + p.h + 16);
+    shadowGrad.addColorStop(0, 'rgba(0,0,0,0.3)');
+    shadowGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = shadowGrad;
+    ctx.fillRect(p.x + 3, p.y + p.h, p.w, 16);
+    // Front face (3D thickness)
+    ctx.fillStyle = theme.front;
+    ctx.fillRect(p.x, p.y + p.h, p.w, thickness);
+    // Right edge (parallelogram for 3D)
+    ctx.fillStyle = theme.side;
     ctx.beginPath();
-    ctx.roundRect(p.x, p.y, p.w, p.h, 3);
+    ctx.moveTo(p.x + p.w, p.y);
+    ctx.lineTo(p.x + p.w + 6, p.y - 5);
+    ctx.lineTo(p.x + p.w + 6, p.y + p.h + thickness - 5);
+    ctx.lineTo(p.x + p.w, p.y + p.h + thickness);
+    ctx.closePath();
     ctx.fill();
-    // Top surface glow
-    ctx.shadowColor = '#6a6aff';
-    ctx.shadowBlur = 10;
-    ctx.strokeStyle = '#7a7abb';
+    // Top face (lit surface — isometric top)
+    ctx.fillStyle = theme.top;
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+    ctx.lineTo(p.x + 6, p.y - 5);
+    ctx.lineTo(p.x + p.w + 6, p.y - 5);
+    ctx.lineTo(p.x + p.w, p.y);
+    ctx.closePath();
+    ctx.fill();
+    // Top flat surface
+    let platGrad = ctx.createLinearGradient(p.x, p.y, p.x, p.y + p.h);
+    platGrad.addColorStop(0, theme.top);
+    platGrad.addColorStop(1, theme.front);
+    ctx.fillStyle = platGrad;
+    ctx.fillRect(p.x, p.y, p.w, p.h);
+    // Top surface glow line
+    ctx.shadowColor = theme.glow;
+    ctx.shadowBlur = 8;
+    ctx.strokeStyle = theme.line;
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(p.x + 3, p.y);
-    ctx.lineTo(p.x + p.w - 3, p.y);
+    ctx.moveTo(p.x + 2, p.y);
+    ctx.lineTo(p.x + p.w - 2, p.y);
     ctx.stroke();
     ctx.shadowBlur = 0;
-    // Support brackets
-    ctx.fillStyle = '#222244';
-    ctx.fillRect(p.x + 8, p.y + p.h, 4, 8);
-    ctx.fillRect(p.x + p.w - 12, p.y + p.h, 4, 8);
+  });
+
+  // ─── 2.5D: ENTITY SHADOWS (Phase 1) ───
+  // Player shadows
+  if (state === 'playing') {
+    if (player.alive) {
+      let pSurf = findShadowSurface(player.x, player.y, player.h);
+      drawShadow(player.x, player.y, player.w, pSurf);
+    }
+    if (player2 && player2.alive) {
+      let p2Surf = findShadowSurface(player2.x, player2.y, player2.h);
+      drawShadow(player2.x, player2.y, player2.w, p2Surf);
+    }
+  }
+  // Enemy shadows
+  enemies.forEach(e => {
+    if (!e.alive || e.dying) return;
+    if (e.type === 'drone' || e.type === 'gunship') {
+      drawShadow(e.x, e.y, e.w * 0.8, GROUND);
+    } else {
+      let eSurf = findShadowSurface(e.x, e.y, e.h);
+      drawShadow(e.x, e.y, e.w, eSurf);
+    }
+  });
+  // Grenade shadows
+  grenades.forEach(g => {
+    drawShadow(g.x, g.y, 6, GROUND);
   });
 
   // Casings
@@ -3674,26 +4150,64 @@ function draw() {
     ctx.restore();
   });
 
-  // Particles
+  // Particles (enhanced with glow/smoke types — Phase 6)
+  // Regular and fire particles
   particles.forEach(p => {
     let alpha = p.life / p.maxLife;
-    ctx.globalAlpha = alpha;
-    ctx.fillStyle = p.color;
-    ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+    if (p.glow) {
+      let savedOp = ctx.globalCompositeOperation;
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = alpha * 0.8;
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur = p.size * 2;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.globalCompositeOperation = savedOp;
+    } else {
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+    }
   });
   ctx.globalAlpha = 1;
+  // Smoke particles (grow over time)
+  smokeParticles.forEach((sp, i) => {
+    sp.x += sp.vx;
+    sp.y += sp.vy;
+    sp.life--;
+    sp.size += 0.12;
+    sp.vx *= 0.98;
+    sp.vy *= 0.98;
+    let alpha = (sp.life / sp.maxLife) * 0.3;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = sp.color;
+    ctx.beginPath();
+    ctx.arc(sp.x, sp.y, sp.size, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  // Clean up dead smoke
+  for (let i = smokeParticles.length - 1; i >= 0; i--) {
+    if (smokeParticles[i].life <= 0) smokeParticles.splice(i, 1);
+  }
+  ctx.globalAlpha = 1;
 
-  // Bullets
+  // Bullets (enhanced trails — Phase 6)
   bullets.forEach(b => {
-    // Trail
+    // Trail with additive glow
+    let savedOp = ctx.globalCompositeOperation;
+    ctx.globalCompositeOperation = 'lighter';
     b.trail.forEach((t, i) => {
-      let alpha = (i / b.trail.length) * 0.4;
+      let alpha = (i / b.trail.length) * 0.35;
       ctx.globalAlpha = alpha;
       ctx.fillStyle = b.explosive ? '#ff8a50' : b.color;
       ctx.beginPath();
       ctx.arc(t.x, t.y, b.size * (b.explosive ? 0.8 : 0.6), 0, Math.PI * 2);
       ctx.fill();
     });
+    ctx.globalCompositeOperation = savedOp;
     ctx.globalAlpha = 1;
     if (b.explosive) {
       // RPG rocket rendering
@@ -3842,9 +4356,9 @@ function draw() {
       ctx.ellipse(8 + eWalk, eLegBottom, 6, 4, 0, 0, Math.PI * 2);
       ctx.fill();
 
-      // Torso (wider)
-      ctx.fillStyle = eColor;
+      // Torso (wider, 3D gradient)
       let tw = e.w * 0.85;
+      ctx.fillStyle = (e.hit > 0) ? '#fff' : make3DGradient(ctx, -tw / 2 - 3, e.h * 0.24, tw + 6, e.h * 0.38, e.color);
       ctx.beginPath();
       ctx.moveTo(-tw / 2, e.h * 0.24);
       ctx.lineTo(-tw / 2 - 3, e.h * 0.62);
@@ -3852,6 +4366,13 @@ function draw() {
       ctx.lineTo(tw / 2, e.h * 0.24);
       ctx.closePath();
       ctx.fill();
+      // Rim light
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-tw / 2, e.h * 0.24);
+      ctx.lineTo(-tw / 2 - 3, e.h * 0.62);
+      ctx.stroke();
       // Chest armor detail
       ctx.strokeStyle = 'rgba(255,100,100,0.4)';
       ctx.lineWidth = 2;
@@ -3880,9 +4401,9 @@ function draw() {
       ctx.fillStyle = '#ff4444';
       ctx.fillRect(e.facing * 16, e.h * 0.33 - 4, e.facing * 3, 7);
 
-      // Head (larger)
-      ctx.fillStyle = eSkin;
+      // Head (larger, 3D gradient)
       let headR = e.w * 0.34;
+      ctx.fillStyle = (e.hit > 0) ? '#fff' : makeHeadGradient(ctx, 0, e.h * 0.16, headR, eSkin);
       ctx.beginPath();
       ctx.arc(0, e.h * 0.16, headR, 0, Math.PI * 2);
       ctx.fill();
@@ -4017,9 +4538,9 @@ function draw() {
       ctx.beginPath(); ctx.ellipse(-10 - eWalk, eLegBottom, 7, 5, 0, 0, Math.PI * 2); ctx.fill();
       ctx.beginPath(); ctx.ellipse(10 + eWalk, eLegBottom, 7, 5, 0, 0, Math.PI * 2); ctx.fill();
 
-      // Torso
-      ctx.fillStyle = eColor;
+      // Torso (3D gradient)
       let tw = e.w * 0.9;
+      ctx.fillStyle = (e.hit > 0) ? '#fff' : make3DGradient(ctx, -tw / 2 - 4, e.h * 0.22, tw + 8, e.h * 0.4, e.color);
       ctx.beginPath();
       ctx.moveTo(-tw / 2, e.h * 0.22);
       ctx.lineTo(-tw / 2 - 4, e.h * 0.62);
@@ -4027,6 +4548,13 @@ function draw() {
       ctx.lineTo(tw / 2, e.h * 0.22);
       ctx.closePath();
       ctx.fill();
+      // Rim light
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-tw / 2, e.h * 0.22);
+      ctx.lineTo(-tw / 2 - 4, e.h * 0.62);
+      ctx.stroke();
 
       // Arms + Big gun
       ctx.strokeStyle = eSkin;
@@ -4038,9 +4566,9 @@ function draw() {
       ctx.fillStyle = '#ff1744';
       ctx.fillRect(e.facing * 18, e.h * 0.33 - 5, e.facing * 4, 9);
 
-      // Head
-      ctx.fillStyle = eSkin;
+      // Head (3D gradient)
       let headR = e.w * 0.36;
+      ctx.fillStyle = (e.hit > 0) ? '#fff' : makeHeadGradient(ctx, 0, e.h * 0.14, headR, eSkin);
       ctx.beginPath(); ctx.arc(0, e.h * 0.14, headR, 0, Math.PI * 2); ctx.fill();
 
       // Crown/Horns (larger)
@@ -4157,17 +4685,18 @@ function draw() {
       ctx.strokeRect(-hbW2 / 2, -10, hbW2, 5);
 
     } else {
-      // ── NORMAL ENEMY RENDERING ──
+      // ── NORMAL ENEMY RENDERING (3D shaded) ──
 
-      // ── Legs ──
+      // ── Legs (gradient) ──
       let eLegBottom = e.h - 3;
       ctx.lineWidth = 4;
       ctx.lineCap = 'round';
-      ctx.strokeStyle = '#333';
+      ctx.strokeStyle = makeLimbGradient(ctx, -3, e.h * 0.62, -5 - eWalk, eLegBottom, '#333');
       ctx.beginPath();
       ctx.moveTo(-3, e.h * 0.62);
       ctx.lineTo(-5 - eWalk, eLegBottom);
       ctx.stroke();
+      ctx.strokeStyle = makeLimbGradient(ctx, 3, e.h * 0.62, 5 + eWalk, eLegBottom, '#333');
       ctx.beginPath();
       ctx.moveTo(3, e.h * 0.62);
       ctx.lineTo(5 + eWalk, eLegBottom);
@@ -4181,9 +4710,9 @@ function draw() {
       ctx.ellipse(5 + eWalk, eLegBottom, 4, 2.5, 0, 0, Math.PI * 2);
       ctx.fill();
 
-      // ── Torso ──
-      ctx.fillStyle = eColor;
+      // ── Torso (3D gradient) ──
       let tw = e.w * 0.8;
+      ctx.fillStyle = (e.hit > 0) ? '#fff' : make3DGradient(ctx, -tw / 2 - 1, e.h * 0.28, tw + 2, e.h * 0.34, e.color);
       ctx.beginPath();
       ctx.moveTo(-tw / 2, e.h * 0.28);
       ctx.lineTo(-tw / 2 - 1, e.h * 0.62);
@@ -4191,17 +4720,25 @@ function draw() {
       ctx.lineTo(tw / 2, e.h * 0.28);
       ctx.closePath();
       ctx.fill();
+      // Rim light
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-tw / 2, e.h * 0.28);
+      ctx.lineTo(-tw / 2 - 1, e.h * 0.62);
+      ctx.stroke();
 
-      // ── Arms ──
-      ctx.strokeStyle = eSkin;
+      // ── Arms (3D shaded) ──
       ctx.lineWidth = 3;
       ctx.lineCap = 'round';
       // Back arm
+      ctx.strokeStyle = makeLimbGradient(ctx, -e.facing * 5, e.h * 0.32, -e.facing * 9, e.h * 0.5 + eWalk * 0.5, eSkin);
       ctx.beginPath();
       ctx.moveTo(-e.facing * 5, e.h * 0.32);
       ctx.lineTo(-e.facing * 9, e.h * 0.5 + eWalk * 0.5);
       ctx.stroke();
       // Gun arm
+      ctx.strokeStyle = makeLimbGradient(ctx, e.facing * 5, e.h * 0.32, e.facing * 11, e.h * 0.38, eSkin);
       ctx.beginPath();
       ctx.moveTo(e.facing * 5, e.h * 0.32);
       ctx.lineTo(e.facing * 11, e.h * 0.38);
@@ -4213,12 +4750,19 @@ function draw() {
         ctx.fillRect(e.facing * 11, e.h * 0.36 - 2, e.facing * 12, 3);
       }
 
-      // ── Head ──
-      ctx.fillStyle = eSkin;
+      // ── Head (3D radial gradient) ──
       let headR = e.w * 0.32;
+      ctx.fillStyle = (e.hit > 0) ? '#fff' : makeHeadGradient(ctx, 0, e.h * 0.2, headR, eSkin);
       ctx.beginPath();
       ctx.arc(0, e.h * 0.2, headR, 0, Math.PI * 2);
       ctx.fill();
+      // Specular highlight on head
+      if (e.hit <= 0) {
+        ctx.fillStyle = 'rgba(255,255,255,0.4)';
+        ctx.beginPath();
+        ctx.arc(-headR * 0.3, e.h * 0.2 - headR * 0.3, headR * 0.28, 0, Math.PI * 2);
+        ctx.fill();
+      }
 
       // ── Bandana/headgear ──
       ctx.fillStyle = eColor;
@@ -4300,6 +4844,20 @@ function draw() {
     ctx.fillText(t.text, t.x, t.y);
   });
   ctx.globalAlpha = 1;
+
+  // ─── PVP LOW-HP DANGER VIGNETTE ───
+  if (pvpMode && state === 'playing') {
+    let localP = (onlineMode && isClient) ? player2 : player;
+    if (localP && localP.alive && localP.health <= localP.maxHealth * 0.3) {
+      let pulse = 0.12 + Math.sin(Date.now() * 0.008) * 0.08;
+      let vgrad = ctx.createRadialGradient(canvas.width / 2, canvas.height / 2, canvas.width * 0.25,
+                                            canvas.width / 2, canvas.height / 2, canvas.width * 0.7);
+      vgrad.addColorStop(0, 'rgba(0,0,0,0)');
+      vgrad.addColorStop(1, `rgba(200,0,0,${pulse})`);
+      ctx.fillStyle = vgrad;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+  }
 
   // ─── HUD ───
   // P1 Health
